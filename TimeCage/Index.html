@@ -1,0 +1,1722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>游戏冻结工具 v1.4</title>
+    <!-- =============================================================== -->
+    <!-- WebView2 与 C++ 框架交互核心模块 - 通用模板 -->
+    <!-- 功能说明：处理 WebView2 网页与桌面应用程序之间的双向通信 -->
+    <!-- 使用方法：复制此代码段到您的 HTML 文件头部，然后按照注释说明扩展 -->
+    <!-- =============================================================== -->
+    <script>
+        /**
+         * @fileoverview WebView2 交互核心模块
+         * @description 此模块提供了 WebView2 网页与 C++ 桌面程序之间的双向通信功能
+         * 包含命令定义、消息发送、消息接收处理等功能
+         * @version 1.0
+         */
+
+        // ===============================================================
+        // 1. 命令常量定义区
+        // ===============================================================
+        /**
+         * WebView 通信命令常量
+         * 说明：定义所有在 C++ 和 JS 之间传递的命令名称
+         * 命名规则：WebViewCmd_命令名称
+         */
+        const WebViewCmd = {
+            None: "WebViewCmd_None",
+            ShowMessageBox: "WebViewCmd_ShowMessageBox",                // 显示提示框
+            SetAppName: "WebViewCmd_SetAppName",                        // 设置标题栏文本
+            SetShortCutButtonInfo: "WebViewCmd_SetShortCutButtonInfo",  // 设置快捷按钮信息
+            FreezeGame: "WebViewCmd_FreezeGame",                        // 冻结游戏
+            ThawGame: "WebViewCmd_ThawGame",                            // 解冻游戏
+            ToggleOption: "WebViewCmd_ToggleOption",                    // 切换选项
+            SysClose: "WebViewCmd_SysClose",                            // 退出程序
+            SysMinimize: "WebViewCmd_SysMinimize"                       // 最小化窗口
+        };
+
+        // ===============================================================
+        // 2. 消息接收与处理区（C++ → JS）
+        // ===============================================================
+        /**
+         * 接收来自 C++ 的 JSON 消息
+         * @param {string} jsonStringFromCpp - C++ 发送的 JSON 字符串
+         * @description 这是 C++ 代码调用的入口函数，请勿重命名
+         */
+        function onReceiveCppJson(jsonStringFromCpp) {
+            try {
+                let data = JSON.parse(jsonStringFromCpp);
+
+                // 根据命令类型分发到对应的处理函数
+                if (WebViewCmd.SetAppName == data.cmd) {
+                    processWebViewCmd_SetAppName(data.param1);
+                }
+                else if (WebViewCmd.SetShortCutButtonInfo == data.cmd) {
+                    processWebViewCmd_SetShortCutButtonInfo(parseInt(data.param1), data.param2, data.param3, parseInt(data.param4));
+                }
+                else if (WebViewCmd.ShowMessageBox == data.cmd) {
+                    processWebViewCmd_ShowMessageBox(data.param1);
+                }
+                else if (WebViewCmd.FreezeGame == data.cmd) {
+                    processWebViewCmd_FreezeGame(parseInt(data.param1));
+                }
+                else if (WebViewCmd.ThawGame == data.cmd) {
+                    processWebViewCmd_ThawGame(parseInt(data.param1));
+                }
+
+            } catch (error) {
+                console.error("网页解析来自 C++ 的数据失败:", error);
+            }
+        }
+
+        // ===============================================================
+        // 3. 消息发送区（JS → C++）
+        // ===============================================================
+        /**
+         * 创建命令 JSON 字符串
+         * @param {string} cmd - 命令名称
+         * @param {string} param1 - 参数1（可选）
+         * @param {string} param2 - 参数2（可选）
+         * @param {string} param3 - 参数3（可选）
+         * @param {string} param4 - 参数4（可选）
+         * @returns {string} JSON 字符串
+         */
+        function createCmdString(cmd, param1, param2, param3, param4) {
+            let msgObject = {
+                cmd: cmd,
+                param1: param1,
+                param2: param2,
+                param3: param3,
+                param4: param4
+            };
+            return JSON.stringify(msgObject);
+        }
+
+        /**
+         * 发送命令给 C++ 框架
+         * @param {string} cmdStr - 命令 JSON 字符串
+         */
+        function sendWebViewCmd(cmdStr) {
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage(cmdStr);
+            }
+        }
+
+        // ===============================================================
+        // 4. 发送命令的快捷函数区（JS → C++）
+        // ===============================================================
+        /** 发送设置快捷按钮信息的命令 */
+        function sendWebViewCmd_SetShortCutButtonInfo(buttonIndex, processName, comment, iconIndex) {
+            sendWebViewCmd(createCmdString(WebViewCmd.SetShortCutButtonInfo, String(buttonIndex), processName, comment, String(iconIndex)));
+        }
+
+        /** 发送冻结游戏的命令 */
+        function sendWebViewCmd_FreezeGame(index) {
+            sendWebViewCmd(createCmdString(WebViewCmd.FreezeGame, String(index), '', '', ''));
+        }
+
+        /** 发送解冻游戏的命令 */
+        function sendWebViewCmd_ThawGame(index) {
+            sendWebViewCmd(createCmdString(WebViewCmd.ThawGame, String(index), '', '', ''));
+        }
+
+        /** 发送切换选项的命令 */
+        function sendWebViewCmd_ToggleOption(option) {
+            sendWebViewCmd(createCmdString(WebViewCmd.ToggleOption, option, '', '', ''));
+        }
+
+        /** 发送退出程序的命令 */
+        function sendWebViewCmd_SysQuit() {
+            sendWebViewCmd(createCmdString(WebViewCmd.SysClose, '', '', '', ''));
+        }
+
+        /** 发送最小化窗口的命令 */
+        function sendWebViewCmd_SysMinimize() {
+            sendWebViewCmd(createCmdString(WebViewCmd.SysMinimize, '', '', '', ''));
+        }
+
+        // ===============================================================
+        // 5. 处理 C++ 命令的具体实现区（C++ → JS）
+        // ===============================================================
+        /** 处理设置标题栏文本的命令 */
+        function processWebViewCmd_SetAppName(appName) {
+            document.getElementById("captionLabel").innerText = appName;
+        }
+
+        /** 处理设置快捷按钮信息的命令 */
+        function processWebViewCmd_SetShortCutButtonInfo(index, processName, comment, iconIndex) {
+            changeShortcutButtonInfo(index, processName, comment, iconIndex);
+        }
+
+        /** 处理显示提示框的命令 */
+        function processWebViewCmd_ShowMessageBox(tip) {
+            showAlertModal(tip);
+        }
+
+        /** 处理冻结游戏的命令 */
+        function processWebViewCmd_FreezeGame(index) {
+            setGameFrozen(index, true);
+        }
+
+        /** 处理解冻游戏的命令 */
+        function processWebViewCmd_ThawGame(index) {
+            setGameFrozen(index, false);
+        }
+
+        // ===============================================================
+        // 扩展说明：
+        // 1. 如果需要新增通信命令，请先在 WebViewCmd 中添加常量
+        // 2. 然后在 processWebViewCmd_ 系列函数中添加处理逻辑
+        // 3. 如需发送新命令给 C++，请添加 sendWebViewCmd_ 系列函数
+        // ===============================================================
+    </script>
+    <!-- =============================================================== -->
+    <!-- WebView2 核心模块结束 -->
+    <!-- =============================================================== -->
+    <style>
+        /* 原有样式保持不变，新增提示框样式 */
+        /* ===== 提示框外层遮罩 ===== */
+        .alert-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 99999 !important;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.25s ease;
+        }
+
+            .alert-modal-overlay.active {
+                opacity: 1 !important;
+                visibility: visible !important;
+            }
+
+        /* ===== 提示框窗口 —— 完全复刻编辑快捷按钮弹窗 ===== */
+        .alert-modal-window {
+            width: 100%;
+            max-width: 450px;
+            background: rgba(30, 35, 45, 0.95); /* 深色半透明面板 */
+            border: 1px solid rgba(0, 180, 220, 0.35); /* 青蓝色边框 */
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(0, 180, 220, 0.15);
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            position: relative;
+        }
+
+        /* ===== 标题栏 ===== */
+        .alert-modal-title-bar {
+            height: 56px;
+            line-height: 56px;
+            background: rgba(30, 35, 45, 0.95);
+            border-bottom: 1px solid rgba(0, 180, 220, 0.2);
+            padding: 0 24px;
+            color: #00c8e6; /* 青蓝色标题 */
+            font-size: 22px;
+            font-weight: 600;
+            text-shadow: 0 0 10px rgba(0, 200, 230, 0.5);
+        }
+
+        /* ===== 右上角关闭按钮 —— 完全复刻你窗口的红色圆形按钮 ===== */
+        .alert-modal-close-btn {
+            position: absolute;
+            top: 16px;
+            right: 20px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%; /* 圆形 */
+            border: 1px solid rgba(255, 77, 77, 0.4);
+            background: linear-gradient(145deg, #5a2a2a 0%, #4a1e1e 100%);
+            color: #ff4d4d;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            transition: all 0.25s ease;
+        }
+
+            .alert-modal-close-btn:hover {
+                box-shadow: 0 0 15px rgba(255, 77, 77, 0.4);
+                background: linear-gradient(145deg, #6a3a3a 0%, #5a2e2e 100%);
+                color: #fff;
+            }
+
+        /* ===== 内容区 ===== */
+        .alert-modal-content {
+            padding: 24px;
+            color: #e2e8f0;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        /* ===== 提示文本 ===== */
+        .alert-modal-message {
+            min-height: 60px;
+            margin-bottom: 24px;
+        }
+
+        /* ===== 底部确定按钮 —— 和“确认”按钮同风格 ===== */
+        .alert-modal-btn {
+            display: block;
+            width: 100%;
+            height: 50px;
+            line-height: 50px;
+            background: linear-gradient(145deg, #0a3d4a 0%, #052a35 100%);
+            border: 1px solid rgba(0, 240, 255, 0.5);
+            color: #00f0ff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 600;
+            text-align: center;
+            text-shadow: 0 0 8px rgba(0, 200, 230, 0.4);
+            transition: all 0.25s ease;
+        }
+
+            .alert-modal-btn:hover {
+                box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+                background: linear-gradient(145deg, #0b4555 0%, #06303d 100%);
+            }
+
+        /* 原有样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+            min-height: 100vh;
+            /* 移除居中相关样式 */
+            /* justify-content: center;
+            align-items: center; */
+            padding: 0; /* 移除body的padding */
+            display: block; /* 改为block而非flex */
+            overflow: hidden; /* 防止页面滚动 */
+        }
+
+        .window-container {
+            width: 100vw; /* 宽度占满视口 */
+            height: 100vh; /* 高度占满视口 */
+            max-width: none; /* 取消最大宽度限制 */
+            background: linear-gradient(145deg, #21262d 0%, #161b22 100%);
+            border-radius: 0; /* 取消圆角，全屏不需要 */
+            box-shadow: 0 0 50px rgba(0, 180, 220, 0.1), 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            overflow: hidden;
+            border: 1px solid rgba(0, 180, 220, 0.25);
+            position: relative; /* 确保定位正常 */
+        }
+
+        .title-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            background: linear-gradient(180deg, #21262d 0%, #161b22 100%);
+            border-bottom: 1px solid rgba(0, 180, 220, 0.2);
+            width: 100%; /* 确保标题栏占满宽度 */
+            -webkit-app-region: drag; /* ⚡ 允许鼠标按住这里拖动整个程序窗口 */
+        }
+
+        .title-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .title-icon {
+            font-size: 24px;
+        }
+
+        .title-text {
+            font-size: 16px;
+            font-weight: 600;
+            color: #00c8e6;
+            text-shadow: 0 0 10px rgba(0, 200, 230, 0.5);
+        }
+
+        .title-right {
+            display: flex;
+            gap: 8px;
+        }
+
+        .window-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            transition: all 0.25s ease;
+        }
+
+        .btn-minimize {
+            background: linear-gradient(145deg, #3a4a5a 0%, #2a3a4a 100%);
+            color: #00c8e6;
+            border: 1px solid rgba(0, 200, 230, 0.35);
+        }
+
+            .btn-minimize:hover {
+                background: linear-gradient(145deg, #4a5a6a 0%, #3a4a5a 100%);
+                box-shadow: 0 0 15px rgba(0, 200, 230, 0.35);
+            }
+
+        .btn-close {
+            background: linear-gradient(145deg, #5a2a2a 0%, #4a1e1e 100%);
+            color: #ff4d4d;
+            border: 1px solid rgba(255, 77, 77, 0.4);
+        }
+
+            .btn-close:hover {
+                background: linear-gradient(145deg, #6a3a3a 0%, #5a2e2e 100%);
+                box-shadow: 0 0 15px rgba(255, 77, 77, 0.35);
+            }
+
+        .content-area {
+            padding: 16px 20px;
+            height: calc(100vh - 60px); /* 减去标题栏高度，占满剩余空间 */
+            overflow-y: auto; /* 内容超出时可滚动 */
+        }
+
+        .main-layout {
+            display: flex;
+            gap: 16px;
+            height: 100%; /* 占满content-area高度 */
+        }
+
+        .left-panel {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            height: 100%; /* 占满main-layout高度 */
+        }
+
+        .panel-box {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(0, 180, 220, 0.15);
+            border-radius: 8px;
+            padding: 12px;
+            /* 让panel-box自适应剩余空间 */
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .section-header {
+            font-size: 11px;
+            color: #6e7a85;
+            margin-bottom: 10px;
+            padding-left: 8px;
+            border-left: 2px solid #00c8e6;
+            letter-spacing: 0.3px;
+        }
+
+        .target-process {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .process-input {
+            flex: 1;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 180, 220, 0.3);
+            border-radius: 6px;
+            color: #00c8e6;
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+            .process-input:focus {
+                border-color: #00c8e6;
+                box-shadow: 0 0 15px rgba(0, 200, 230, 0.2);
+            }
+
+            .process-input::placeholder {
+                color: #4a5568;
+            }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            position: relative;
+            overflow: hidden;
+        }
+
+            .btn::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 50%);
+            }
+
+        .btn-browse {
+            background: linear-gradient(145deg, #2d3748 0%, #1a202c 100%);
+            color: #00c8e6;
+            border: 1px solid rgba(0, 180, 220, 0.35);
+        }
+
+            .btn-browse:hover {
+                background: linear-gradient(145deg, #3d4758 0%, #2a303c 100%);
+                border-color: #00c8e6;
+            }
+
+        .btn-config {
+            background: linear-gradient(145deg, #2d3748 0%, #1a202c 100%);
+            color: #9ca3af;
+            border: 1px solid rgba(156, 163, 175, 0.3);
+            width: 100%;
+            justify-content: center;
+        }
+
+            .btn-config:hover {
+                color: #d1d5db;
+                border-color: #d1d5db;
+            }
+
+        .quick-launch {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            /* 让快捷启动区域自适应 */
+            flex: 1;
+            align-content: flex-start;
+        }
+
+        .game-card {
+            width: 110px;
+            min-height: 130px;
+            padding: 12px;
+            background: linear-gradient(145deg, #2d3748 0%, #1a202c 100%);
+            border-radius: 8px;
+            border: 2px solid rgba(0, 180, 220, 0.3);
+            cursor: pointer;
+            transition: all 0.35s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            position: relative;
+            overflow: hidden;
+        }
+
+            .game-card::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 60%);
+            }
+
+            .game-card:hover {
+                border-color: #00c8e6;
+                box-shadow: 0 0 20px rgba(0, 180, 220, 0.25);
+                transform: translateY(-2px);
+            }
+
+            .game-card.active {
+                border-color: #ffffff;
+                border-width: 3px;
+                box-shadow: 0 0 20px rgba(255, 255, 255, 0.4), inset 0 0 15px rgba(0, 180, 220, 0.1);
+            }
+
+            .game-card.frozen {
+                border-color: #8b5cf6;
+                box-shadow: 0 0 20px rgba(139, 92, 246, 0.4), inset 0 0 15px rgba(139, 92, 246, 0.1);
+            }
+
+        .freeze-indicator {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .game-card.frozen .freeze-indicator {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .game-icon-container {
+            position: relative;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            z-index: 1;
+            height: 48px;
+            width: 100%;
+        }
+
+        .game-icon {
+            font-size: 28px;
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .game-number {
+            font-size: 12px;
+            font-weight: 700;
+            color: #00c8e6;
+            text-shadow: 0 0 5px rgba(0, 200, 230, 0.5);
+            position: relative;
+            z-index: 1;
+        }
+
+        .game-name {
+            font-size: 12px;
+            color: #e2e8f0;
+            font-weight: 500;
+            position: relative;
+            z-index: 1;
+            margin-top: 4px;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        .game-name-en {
+            font-size: 10px;
+            color: #6b7280;
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        .add-preset {
+            width: 110px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            border: 1px dashed rgba(107, 114, 128, 0.4);
+            cursor: pointer;
+            transition: all 0.35s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: #4b5563;
+            position: relative;
+        }
+
+            .add-preset:hover {
+                border-color: #00c8e6;
+                color: #00c8e6;
+                background: rgba(0, 180, 220, 0.05);
+            }
+
+        .add-preset-icon {
+            font-size: 22px;
+        }
+
+        .add-preset-text {
+            font-size: 11px;
+        }
+
+        .control-center {
+            display: flex;
+            gap: 12px;
+            /* 控制中心占满宽度 */
+            width: 100%;
+        }
+
+        .btn-freeze {
+            flex: 1;
+            padding: 14px;
+            background: linear-gradient(145deg, #0a3d4a 0%, #052a35 100%);
+            color: #00f0ff;
+            border: 2px solid rgba(0, 240, 255, 0.5);
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            position: relative;
+            overflow: hidden;
+            border-radius: 6px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 4px 12px rgba(0, 180, 220, 0.2);
+        }
+
+            .btn-freeze::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-image: url("data:image/svg+xml,%3Csvg width='100%25' height='100%25' viewBox='0 0 200 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='ice' width='40' height='30' patternUnits='userSpaceOnUse'%3E%3Cpath d='M0 15 Q10 5 20 15 T40 15' stroke='rgba(0,240,255,0.1)' stroke-width='1' fill='none'/%3E%3Cpath d='M0 20 Q10 10 20 20 T40 20' stroke='rgba(0,240,255,0.08)' stroke-width='0.5' fill='none'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23ice)'/%3E%3C/svg%3E");
+                opacity: 0.6;
+            }
+
+            .btn-freeze::after {
+                content: '';
+                position: absolute;
+                top: -50%;
+                left: -50%;
+                width: 200%;
+                height: 200%;
+                background: linear-gradient(45deg, transparent 30%, rgba(0, 240, 255, 0.2) 50%, transparent 70%);
+                animation: shimmer 3s infinite;
+            }
+
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-50%) rotate(45deg);
+            }
+
+            100% {
+                transform: translateX(50%) rotate(45deg);
+            }
+        }
+
+        .btn-freeze:hover {
+            border-color: #00f0ff;
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.4), inset 0 0 20px rgba(0, 240, 255, 0.1);
+        }
+
+        .btn-thaw {
+            flex: 1;
+            padding: 14px;
+            background: linear-gradient(145deg, #7a3515 0%, #5a250a 100%);
+            color: #ff8c42;
+            border: 2px solid rgba(255, 140, 66, 0.5);
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            position: relative;
+            overflow: hidden;
+            border-radius: 6px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 4px 12px rgba(255, 100, 50, 0.2);
+        }
+
+            .btn-thaw::before {
+                content: '';
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 8px;
+                background: linear-gradient(180deg, rgba(255, 100, 50, 0.3) 0%, transparent 100%);
+            }
+
+            .btn-thaw::after {
+                content: '';
+                position: absolute;
+                top: -50%;
+                left: -50%;
+                width: 200%;
+                height: 200%;
+                background: linear-gradient(45deg, transparent 30%, rgba(255, 140, 66, 0.25) 50%, transparent 70%);
+                animation: shimmer 2.5s infinite;
+            }
+
+            .btn-thaw:hover {
+                border-color: #ff8c42;
+                box-shadow: 0 0 30px rgba(255, 140, 66, 0.4), inset 0 0 20px rgba(255, 140, 66, 0.1);
+            }
+
+        .options-section {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .option-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: opacity 0.25s ease;
+        }
+
+            .option-item:hover {
+                opacity: 0.85;
+            }
+
+        .checkbox-wrapper {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+            .checkbox-wrapper.checked {
+                background: linear-gradient(145deg, #00c8e6, #008fa3);
+                box-shadow: 0 0 12px rgba(0, 200, 230, 0.5);
+            }
+
+            .checkbox-wrapper.unchecked {
+                background: #4a5568;
+                border: 1px solid rgba(107, 114, 128, 0.4);
+            }
+
+        .checkbox-icon {
+            font-size: 10px;
+            color: #ffffff;
+        }
+
+        .checkbox-wrapper.unchecked .checkbox-icon {
+            display: none;
+        }
+
+        .option-label {
+            font-size: 12px;
+            color: #d1d5db;
+            font-weight: 400;
+        }
+
+        .options-wrapper {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(0, 180, 220, 0.35);
+            border-radius: 6px;
+            padding: 14px;
+            display: flex;
+            align-items: center;
+            height: 55px;
+            width: 100%; /* 选项容器占满宽度 */
+        }
+
+        .icon-snowflake::before {
+            content: '❄';
+            font-size: 18px;
+        }
+
+        .icon-flame::before {
+            content: '🔥';
+            font-size: 18px;
+        }
+
+        .icon-search::before {
+            content: '🔍';
+        }
+
+        .icon-settings::before {
+            content: '⚙';
+        }
+
+        .icon-plus::before {
+            content: '+';
+        }
+
+        .icon-check::before {
+            content: '✓';
+        }
+
+        .icon-game {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+        }
+
+            .icon-game svg {
+                width: 100%;
+                height: 100%;
+            }
+
+        .icon-minus::before {
+            content: '−';
+            font-size: 14px;
+        }
+
+        .icon-x::before {
+            content: '✕';
+            font-size: 12px;
+        }
+
+        .icon-clown::before {
+            content: '🤡';
+        }
+
+        .icon-potato::before {
+            content: '🥔';
+        }
+
+        .icon-avatar::before {
+            content: '👽';
+        }
+
+        .icon-xbox::before {
+            content: '☓';
+        }
+
+        /* 新增弹窗样式 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+            .modal-overlay.active {
+                opacity: 1;
+                visibility: visible;
+            }
+
+        .modal-window {
+            width: 100%;
+            max-width: 400px;
+            background: linear-gradient(145deg, #21262d 0%, #161b22 100%);
+            border-radius: 12px;
+            box-shadow: 0 0 50px rgba(0, 180, 220, 0.2), 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 180, 220, 0.25);
+            overflow: hidden;
+            transform: translateY(-20px);
+            transition: all 0.3s ease;
+        }
+
+        .modal-overlay.active .modal-window {
+            transform: translateY(0);
+        }
+
+        .modal-title-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 20px;
+            background: linear-gradient(180deg, #21262d 0%, #161b22 100%);
+            border-bottom: 1px solid rgba(0, 180, 220, 0.2);
+        }
+
+        .modal-title-text {
+            font-size: 13px;
+            font-weight: 600;
+            color: #00c8e6;
+            text-shadow: 0 0 10px rgba(0, 200, 230, 0.5);
+        }
+
+        .modal-close-btn {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+            background: linear-gradient(145deg, #5a2a2a 0%, #4a1e1e 100%);
+            color: #ff4d4d;
+            border: 1px solid rgba(255, 77, 77, 0.4);
+        }
+
+        .modal-content {
+            padding: 12px 20px;
+        }
+
+        .modal-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .modal-input {
+            padding: 8px 14px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 180, 220, 0.3);
+            border-radius: 6px;
+            color: #00c8e6;
+            font-size: 13px;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+            .modal-input:focus {
+                border-color: #00c8e6;
+                box-shadow: 0 0 15px rgba(0, 200, 230, 0.2);
+            }
+
+            .modal-input::placeholder {
+                color: #4a5568;
+            }
+
+        .modal-btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 4px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 8px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+            .modal-btn.confirm {
+                background: linear-gradient(145deg, #0a3d4a 0%, #052a35 100%);
+                color: #00f0ff;
+                border: 1px solid rgba(0, 240, 255, 0.5);
+            }
+
+                .modal-btn.confirm:hover {
+                    border-color: #00f0ff;
+                    box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+                }
+
+            .modal-btn.cancel {
+                background: linear-gradient(145deg, #3a4a5a 0%, #2a3a4a 100%);
+                color: #9ca3af;
+                border: 1px solid rgba(156, 163, 175, 0.3);
+            }
+
+                .modal-btn.cancel:hover {
+                    color: #d1d5db;
+                    border-color: #d1d5db;
+                    box-shadow: 0 0 15px rgba(156, 163, 175, 0.2);
+                }
+
+        /* 图标选择器样式 */
+        .icon-selector-label {
+            font-size: 11px;
+            color: #6e7a85;
+            margin-bottom: 4px;
+            padding-left: 8px;
+            border-left: 2px solid #00c8e6;
+            letter-spacing: 0.3px;
+        }
+
+        .icon-selector {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 4px;
+            margin-bottom: 4px;
+        }
+
+        .icon-option {
+            width: 32px;
+            height: 32px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 2px solid rgba(0, 180, 220, 0.25);
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+            padding: 2px;
+            filter: drop-shadow(0 0 5px rgba(0, 180, 220, 0.15));
+            overflow: hidden;
+        }
+
+            .icon-option:hover {
+                border-color: #00c8e6;
+                box-shadow: 0 0 20px rgba(0, 200, 230, 0.4);
+                transform: translateY(-3px) scale(1.05);
+                filter: drop-shadow(0 0 15px rgba(0, 180, 220, 0.4));
+            }
+
+            .icon-option.selected {
+                border-color: #00f0ff;
+                box-shadow: 0 0 25px rgba(0, 240, 255, 0.5), inset 0 0 15px rgba(0, 240, 255, 0.15);
+                background: rgba(0, 180, 220, 0.15);
+                transform: scale(1.08);
+                filter: drop-shadow(0 0 20px rgba(0, 240, 255, 0.6));
+            }
+
+            .icon-option svg {
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+            }
+
+            .icon-option span {
+                font-size: 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+                height: 100%;
+            }
+
+        .game-icon-svg {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            width: 36px;
+            height: 36px;
+            filter: drop-shadow(0 0 10px rgba(0, 180, 220, 0.4));
+            transition: transform 0.3s ease, filter 0.3s ease;
+        }
+
+            .game-icon-svg:hover {
+                transform: scale(1.15);
+                filter: drop-shadow(0 0 15px rgba(0, 180, 220, 0.6));
+            }
+
+            .game-icon-svg svg {
+                width: 100%;
+                height: 100%;
+            }
+
+        .game-card.active .game-icon-svg {
+            filter: drop-shadow(0 0 20px rgba(0, 240, 255, 0.7));
+            transform: scale(1.15);
+        }
+
+        /* 默认 emoji 图标样式 */
+        .game-card .icon-game {
+            font-size: 36px;
+            transition: transform 0.3s ease, filter 0.3s ease;
+            filter: drop-shadow(0 0 10px rgba(0, 180, 220, 0.4));
+        }
+
+        .game-card:hover .icon-game {
+            transform: scale(1.3);
+            filter: drop-shadow(0 0 15px rgba(0, 180, 220, 0.6));
+        }
+
+        .game-card.active .icon-game {
+            filter: drop-shadow(0 0 20px rgba(0, 240, 255, 0.7));
+            transform: scale(1.15);
+        }
+    </style>
+</head>
+<body>
+    <div class="window-container">
+        <div class="title-bar">
+            <div class="title-left">
+                <span class="title-icon icon-game" id="titleIcon"></span>
+                <span class="title-text" id="captionLabel">游戏冻结工具 (v1.4)</span>
+            </div>
+            <div class="title-right">
+                <button class="window-btn btn-minimize" onclick="sendWebViewCmd_SysMinimize()">
+                    <span class="icon-minus"></span>
+                </button>
+                <button class="window-btn btn-close" onclick="sendWebViewCmd_SysQuit()">
+                    <span class="icon-x"></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="content-area">
+            <div class="main-layout">
+                <div class="left-panel">
+                    <div class="panel-box">
+                        <div class="section-header">选择进程</div>
+                        <div class="quick-launch">
+                            <div class="game-card active" onclick="selectGame()" data-icon-index="0">
+                                <span class="freeze-indicator">🌙</span>
+                                <div class="game-icon-container">
+                                    <span class="game-icon" id="game-icon-0"></span>
+                                    <span class="game-number">1</span>
+                                </div>
+                                <span class="game-name"></span>
+                                <span class="game-name-en"></span>
+                            </div>
+                            <div class="game-card" onclick="selectGame()" data-icon-index="1">
+                                <span class="freeze-indicator">🌙</span>
+                                <div class="game-icon-container">
+                                    <span class="game-icon" id="game-icon-0"></span>
+                                    <span class="game-number">2</span>
+                                </div>
+                                <span class="game-name"></span>
+                                <span class="game-name-en"></span>
+                            </div>
+                            <div class="game-card" onclick="selectGame()" data-icon-index="2">
+                                <span class="freeze-indicator">🌙</span>
+                                <div class="game-icon-container">
+                                    <span class="game-icon" id="game-icon-0"></span>
+                                    <span class="game-number">3</span>
+                                </div>
+                                <span class="game-name"></span>
+                                <span class="game-name-en"></span>
+                            </div>
+                            <div class="game-card" onclick="selectGame()" data-icon-index="3">
+                                <span class="freeze-indicator">🌙</span>
+                                <div class="game-icon-container">
+                                    <span class="game-icon" id="game-icon-0"></span>
+                                    <span class="game-number">4</span>
+                                </div>
+                                <span class="game-name"></span>
+                                <span class="game-name-en"></span>
+                            </div>
+                            <div class="add-preset" onclick="editShortcuts()">
+                                <span class="add-preset-icon icon-settings"></span>
+                                <span class="add-preset-text">编辑快捷按钮</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-box">
+                        <div style="display: flex; gap: 16px; height: 100%;">
+                            <div style="flex: 1;">
+                                <div class="section-header">控制中心</div>
+                                <div class="control-center">
+                                    <button class="btn btn-freeze" onclick="freezeGame()">
+                                        <span class="icon-snowflake"></span>
+                                        冻结
+                                    </button>
+                                    <button class="btn btn-thaw" onclick="thawGame()">
+                                        <span class="icon-flame"></span>
+                                        解冻
+                                    </button>
+                                </div>
+                            </div>
+                            <div style="flex: 1;">
+                                <div class="section-header">选项设置</div>
+                                <div class="options-wrapper">
+                                    <div class="options-section">
+                                        <div class="option-item" onclick="toggleOption('hideWindow')">
+                                            <div class="checkbox-wrapper checked" id="hideWindowCheckbox">
+                                                <span class="checkbox-icon icon-check"></span>
+                                            </div>
+                                            <span class="option-label">冻结时隐藏窗口</span>
+                                        </div>
+                                        <div class="option-item" onclick="toggleOption('hideWindowEnhanced')">
+                                            <div class="checkbox-wrapper unchecked" id="hideWindowEnhancedCheckbox">
+                                                <span class="checkbox-icon icon-check"></span>
+                                            </div>
+                                            <span class="option-label">强化隐藏模式</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增编辑快捷按钮弹窗 -->
+    <div class="modal-overlay" id="editShortcutModal">
+        <div class="modal-window">
+            <div class="modal-title-bar">
+                <span class="modal-title-text">编辑快捷按钮</span>
+                <button class="modal-close-btn" onclick="closeEditModal()">
+                    <span class="icon-x"></span>
+                </button>
+            </div>
+            <div class="modal-content">
+                <div class="modal-form">
+                    <input type="text" class="modal-input" placeholder="描述" id="processDescInput">
+                    <input type="text" class="modal-input" placeholder="启动程序名（*.exe,如果无效就要进程名）" id="processNameInput">
+                    <div class="icon-selector-label">选择图标</div>
+                    <div class="icon-selector" id="iconSelector">
+                    </div>
+                    <div class="modal-btn-group">
+                        <button class="modal-btn confirm" onclick="confirmEditShortcut()">确认</button>
+                        <button class="modal-btn cancel" onclick="closeEditModal()">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增提示框 DOM 结构 -->
+    <div class="alert-modal-overlay" id="alertModal">
+        <div class="alert-modal-window">
+            <div class="alert-modal-title-bar">
+                <span class="alert-modal-title-text">提示信息</span>
+            </div>
+            <!-- 右上角关闭按钮 -->
+            <button class="alert-modal-close-btn" onclick="closeAlertModal()">×</button>
+            <div class="alert-modal-content">
+                <div class="alert-modal-message" id="alertMessageText"></div>
+                <button class="alert-modal-btn" onclick="closeAlertModal()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const gameCards = document.querySelectorAll('.game-card');
+        const pidInput = document.getElementById('pidInput');
+        const editModal = document.getElementById('editShortcutModal');
+        const alertModal = document.getElementById('alertModal'); // 提示框DOM
+        let activeGameCard = document.querySelector('.game-card.active'); // 记录当前选中的卡片
+        let selectedIconIndex = 0; // 记录当前选中的图标索引
+
+        // 10个备用图标（第一个是默认游戏手柄emoji）
+        const iconSvgs = [
+            // 图标1: 默认游戏手柄
+            '<svg t="1780057158875" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="8143" data-spm-anchor-id="a313x.search_index.0.i7.6b833a81U1RLWW" width="200" height="200"><path d = "M1023.07 619.378c-4.968-84.872-30.31-196.462-75.28-331.676a22.086 22.086 0 0 0-4.5-7.67L869.076 198.94a21.288 21.288 0 0 0-15.718-6.938h-85.34c-3.312 0-6.562 0.782-9.532 2.25l-38.156 19.046H303.702l-38.186-19.046a21.386 21.386 0 0 0-9.53-2.25H170.674c-6 0-11.718 2.516-15.75 6.938L80.74 280.032a21.168 21.168 0 0 0-4.5 7.67C31.242 422.916 5.9 534.508 0.93 619.378c-4.312 73.5 6.624 128.996 32.53 164.872 22.53 31.246 56.186 47.746 97.372 47.746 29.936 0 57.092-13.624 80.748-40.558 17.156-19.562 32.53-46.312 45.656-79.594 14.374-36.34 22.936-72.34 27.186-93.152H739.58c4.25 20.812 12.812 56.812 27.188 93.152 13.124 33.282 28.498 60.032 45.652 79.594 23.656 26.934 50.844 40.558 80.75 40.558 41.184 0 74.872-16.5 97.402-47.746 25.874-35.874 36.81-91.372 32.498-164.872z" fill = "#1296db" p - id="8144" data - spm - anchor - id="a313x.search_index.0.i6.6b833a81U1RLWW" class= "selected" ></path ><path d="M527.072 518.258c8.342 8.328 8.342 21.844 0 30.188-8.312 8.312-21.846 8.312-30.158 0-8.344-8.344-8.344-21.86 0-30.188 8.312-8.328 21.846-8.328 30.158 0z" fill="#DA4453" p-id="8145"></path><path d="M825.764 356.418c-8.344 8.344-21.842 8.344-30.154 0-8.344-8.328-8.344-21.828 0-30.17 8.312-8.328 21.81-8.328 30.154 0 8.344 8.344 8.344 21.842 0 30.17zM825.764 441.76c-8.344 8.328-21.842 8.328-30.154 0-8.344-8.328-8.344-21.844 0-30.172 8.312-8.328 21.81-8.328 30.154 0 8.344 8.328 8.344 21.844 0 30.172zM868.42 399.09c-8.312 8.328-21.812 8.328-30.156 0-8.344-8.328-8.344-21.828 0-30.17 8.344-8.328 21.844-8.328 30.156 0 8.344 8.328 8.344 21.842 0 30.17zM783.11 399.09a21.36 21.36 0 0 1-30.186 0c-8.312-8.328-8.312-21.828 0-30.17a21.36 21.36 0 0 1 30.186 0c8.312 8.328 8.312 21.842 0 30.17z" fill="#E6E9ED" p-id="8146"></path><path d="M448.01 554.696c0 47.122-38.218 85.308-85.34 85.308s-85.34-38.188-85.34-85.308c0-47.156 38.218-85.358 85.34-85.358s85.34 38.202 85.34 85.358z" fill="#656D78" p-id="8147"></path><path d="M362.668 448.01c-58.81 0-106.684 47.842-106.684 106.684 0 58.808 47.874 106.652 106.684 106.652s106.654-47.844 106.654-106.652c0-58.842-47.842-106.684-106.654-106.684z m0 170.682c-35.28 0-63.998-28.75-63.998-63.996 0-35.312 28.718-64.014 63.998-64.014s63.998 28.702 63.998 64.014c0 35.246-28.716 63.996-63.998 63.996z" fill="#434A54" p-id="8148"></path><path d="M746.674 554.696c0 47.122-38.188 85.308-85.342 85.308-47.124 0-85.31-38.188-85.31-85.308 0-47.156 38.188-85.358 85.31-85.358 47.154-0.002 85.342 38.202 85.342 85.358z" fill="#656D78" p-id="8149"></path><path d="M661.332 448.01c-58.81 0-106.652 47.842-106.652 106.684 0 58.808 47.842 106.652 106.652 106.652 58.842 0 106.686-47.844 106.686-106.652 0-58.842-47.844-106.684-106.686-106.684z m0 170.682c-35.28 0-63.998-28.75-63.998-63.996 0-35.312 28.718-64.014 63.998-64.014 35.31 0 64.03 28.702 64.03 64.014 0 35.246-28.72 63.996-64.03 63.996z" fill="#434A54" p-id="8150"></path><path d="M213.33 448.01c-11.782 0-21.342-9.546-21.342-21.344V341.34c0-11.78 9.562-21.328 21.342-21.328s21.342 9.546 21.342 21.328v85.326c0 11.798-9.56 21.344-21.342 21.344z" fill="#F5F7FA" p-id="8151"></path><path d="M255.986 405.34H170.674c-11.78 0-21.342-9.546-21.342-21.328s9.562-21.344 21.342-21.344h85.31c11.78 0 21.342 9.562 21.342 21.344 0.002 11.78-9.56 21.328-21.34 21.328z" fill="#E6E9ED" p-id="8152"></path><path d="M362.668 213.298h298.664v85.372H362.668z" fill="#f4ea2a" p-id="8153" data-spm-anchor-id="a313x.search_index.0.i10.6b833a81U1RLWW" class=""></path><path d="M990.572 784.25c17.844-24.718 28.56-58.75 32.124-101.558-0.062 0-119.464 87.09-234.524 72.558 0 0 0.094 0.812 0.344 2.218 7.5 13 15.498 24.344 23.904 33.968 23.656 26.934 50.844 40.558 80.75 40.558 41.184 0.002 74.872-16.498 97.402-47.744zM33.46 784.25C15.618 759.532 4.868 725.5 1.336 682.692c0 0 119.434 87.09 234.524 72.558l-0.344 2.218c-7.532 13-15.5 24.344-23.936 33.968-23.656 26.934-50.81 40.558-80.748 40.558-41.186 0.002-74.84-16.498-97.372-47.744zM141.77 213.298h161.932l-38.186-19.046a21.386 21.386 0 0 0-9.53-2.25H170.674c-6 0-11.718 2.516-15.75 6.938l-13.154 14.358zM882.264 213.298h-161.902l38.156-19.046a21.482 21.482 0 0 1 9.532-2.25h85.34c5.968 0 11.688 2.516 15.718 6.938l13.156 14.358z" fill="#1afa29" p-id="8154" data-spm-anchor-id="a313x.search_index.0.i8.6b833a81U1RLWW" class=""></path></svg > ',
+            // 图标2: 枪
+            `<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M919.366 284.51h95.852v95.85h-95.852z" fill="#D7E9FF"/>
+                                        <path d="M903.406 252.558h-31.964v159.752h31.964c8.784 0 15.974-7.192 15.974-15.974V268.534c0-8.784-7.19-15.976-15.974-15.976zM871.442 156.708h-47.926l-31.952 31.95v47.926h79.878z" fill="#D7E9FF"/>
+                                        <path d="M839.49 156.708h-15.974l-31.952 31.95v47.926h15.976v-45.68z" fill="#FFFFFF"/>
+                                        <path d="M312.31 859.614H280.36c-43.932-133.386 15.974-271.576 15.974-351.454l-47.926-31.95v-15.974H472.06V859.612h-159.75z" fill="#94C1FF"/>
+                                        <path d="M456.088 476.21v383.404h15.974V476.21z" fill="#5C9EFF"/>
+                                        <path d="M312.31 508.16l-47.924-31.95h-15.976l47.926 31.95c0 79.876-59.906 218.066-15.974 351.454h15.974c-43.932-133.388 15.974-271.576 15.974-351.454z" fill="#D7E9FF"/>
+                                        <path d="M727.664 236.904l-31.95-16.294H8.784v175.726H88.66v15.974l95.85 47.926h527.178l31.952-15.976h111.824l15.976-15.974v-191.38h-143.776zM232.436 284.828c0-8.784 7.192-15.974 15.974-15.974h143.776c8.784 0 15.974 7.192 15.974 15.974v47.608c0 8.784-7.192 15.974-15.974 15.974h-143.778c-8.784 0-15.974-7.192-15.974-15.974V284.828z m367.428 143.458H248.41c-8.784 0-15.974-7.192-15.974-15.974s7.192-15.974 15.974-15.974H599.864c8.784 0 15.974 7.192 15.974 15.974s-7.192 15.974-15.974 15.974z" fill="#94C1FF"/>
+                                        <path d="M855.464 236.904v191.382l-15.974 15.974h15.974l15.978-15.974V236.904z" fill="#5C9EFF"/>
+                                        <path d="M8.784 220.61h15.976v175.726H8.784zM120.61 156.708H40.718L8.784 188.658v31.952h111.826z" fill="#D7E9FF"/>
+                                        <path d="M56.694 156.708h-15.976L8.784 188.658v31.952h15.976v-31.454z" fill="#FFFFFF"/>
+                                    </svg>`,
+            // 图标3: 扑克牌
+            `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                                        <defs>
+                                            <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+                                                <stop offset="100%" style="stop-color:#f0f0f0;stop-opacity:1" />
+                                            </linearGradient>
+                                        </defs>
+                                        <rect x="14" y="8" width="36" height="48" rx="4" fill="url(#grad3)" stroke="#333" stroke-width="2"/>
+                                        <text x="20" y="24" font-size="14" font-weight="bold" fill="#e63946">♥</text>
+                                        <text x="32" y="44" font-size="20" font-weight="bold" fill="#e63946" text-anchor="middle">♥</text>
+                                    </svg>`,
+            // 图标4: 外星人
+            `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                                        <defs>
+                                            <linearGradient id="grad4" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" style="stop-color:#a8e6cf;stop-opacity:1" />
+                                                <stop offset="100%" style="stop-color:#56ab91;stop-opacity:1" />
+                                            </linearGradient>
+                                        </defs>
+                                        <ellipse cx="32" cy="30" rx="18" ry="22" fill="url(#grad4)"/>
+                                        <ellipse cx="24" cy="28" rx="6" ry="8" fill="#1a1a2e"/>
+                                        <ellipse cx="40" cy="28" rx="6" ry="8" fill="#1a1a2e"/>
+                                        <ellipse cx="24" cy="26" rx="2" ry="3" fill="#fff"/>
+                                        <ellipse cx="40" cy="26" rx="2" ry="3" fill="#fff"/>
+                                        <ellipse cx="12" cy="30" rx="4" ry="6" fill="url(#grad4)"/>
+                                        <ellipse cx="52" cy="30" rx="4" ry="6" fill="url(#grad4)"/>
+                                        <path d="M28 42 Q32 46 36 42" stroke="#1a1a2e" stroke-width="2" fill="none"/>
+                                    </svg>`,
+            // 图标5: 剑
+            `<svg t="1780064619948" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="16311" width="200" height="200"><path d="M870.228 711.44l-82.024 82.024 76.368 76.368 82.024-82.024-76.368-76.368z" fill="#FF4655" p-id="16312"></path><path d="M902.484 826.344m-70 0a70 70 0 1 0 140 0 70 70 0 1 0-140 0Z" fill="#FFE892" p-id="16313"></path><path d="M902.484 756.344c38.636 0 70 31.364 70 70 0 38.632-31.364 70-70 70-38.632 0-70-31.368-70-70 0-38.636 31.368-70 70-70z m0 33.332c-20.236 0-36.664 16.428-36.664 36.668 0 20.236 16.428 36.664 36.664 36.664 20.24 0 36.668-16.428 36.668-36.664 0-20.24-16.428-36.668-36.668-36.668z" fill="#FFBF57" p-id="16314"></path><path d="M834.872 650.628l-107.48 107.48-59.396-59.396-53.74 70.712L181.508 223.536l8.484-110.308 110.308-8.484 545.888 432.748-70.712 53.74 59.396 59.396z" fill="#9DA9E9" p-id="16315"></path><path d="M189.992 113.228l110.308-8.484 545.888 432.748-70.712 53.74 59.396 59.396-53.74 53.74L189.992 113.228z" fill="#C3D1F7" p-id="16316"></path><path d="M541.02 464.256L340.2 263.436l15.24-114.984 205.808 163.156-20.228 152.648z" fill="#E5EDFE" p-id="16317"></path><path d="M932.456 592.648c-17.172-17.172-45.056-17.172-62.228 0l-200.816 200.816c-17.172 17.172-17.172 45.056 0 62.228 17.172 17.172 45.052 17.172 62.224 0l200.82-200.82c17.172-17.172 17.172-45.052 0-62.224z" fill="#FF864B" p-id="16318"></path><path d="M932.456 592.648c-17.172-17.172-45.056-17.172-62.228 0l-73.536 73.54c-17.172 17.168-17.172 45.052 0 62.224 17.168 17.172 45.052 17.172 62.224 0l73.54-73.54c17.172-17.172 17.172-45.052 0-62.224z" fill="#FFDC89" p-id="16319"></path><path d="M243.78 788.508l-82.024-82.024-76.368 76.368 82.024 82.024 76.368-76.368z" fill="#0097FF" p-id="16320"></path><path d="M118.484 826.344m-70 0a70 70 0 1 0 140 0 70 70 0 1 0-140 0Z" fill="#FFE892" p-id="16321"></path><path d="M118.484 756.344c38.636 0 70 31.364 70 70 0 38.632-31.364 70-70 70-38.632 0-70-31.368-70-70 0-38.636 31.368-70 70-70z m0 33.332c-20.236 0-36.664 16.428-36.664 36.668 0 20.236 16.428 36.664 36.664 36.664 20.24 0 36.668-16.428 36.668-36.664 0-20.24-16.428-36.668-36.668-36.668z" fill="#FFBF57" p-id="16322"></path><path d="M304.592 753.152l-107.48-107.48 59.396-59.396-70.712-53.74L731.684 99.788l110.308 8.484 8.484 110.308-432.748 545.888-53.74-70.712-59.396 59.396z" fill="#C3D1F7" p-id="16323"></path><path d="M463.76 521.976l198.004-203.592-46.968-144.064-213.392 156.408 62.356 191.248z" fill="#E5EDFE" p-id="16324"></path><path d="M841.992 108.272l8.484 110.308-432.748 545.888-53.74-70.712-59.396 59.396-53.74-53.74L841.992 108.272z" fill="#9DA9E9" p-id="16325"></path><path d="M362.576 850.736c17.168-17.172 17.168-45.056 0-62.228l-200.82-200.816c-17.172-17.172-45.056-17.172-62.224 0-17.172 17.172-17.172 45.052 0 62.224l200.816 200.82c17.172 17.172 45.056 17.172 62.228 0z" fill="#FF864B" p-id="16326"></path><path d="M362.576 850.736c17.168-17.172 17.168-45.056 0-62.228l-73.54-73.54c-17.172-17.168-45.056-17.168-62.228 0-17.168 17.172-17.168 45.056 0 62.228l73.54 73.54c17.172 17.172 45.056 17.172 62.228 0z" fill="#FFDC89" p-id="16327"></path></svg>`,
+            // 图标6: 足球
+            `<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M498.688 512m-429.056 0a429.056 429.056 0 1 0 858.112 0 429.056 429.056 0 1 0-858.112 0Z" fill="#EDECEB"/>
+                                        <path d="M501.76 82.944C263.168 82.944 67.584 276.48 67.584 517.12S263.168 951.296 501.76 951.296s434.176-195.584 434.176-434.176C935.936 276.48 742.4 82.944 501.76 82.944z m397.312 327.68l-33.792-18.432c-13.312-77.824-60.416-146.432-95.232-186.368 61.44 53.248 107.52 123.904 129.024 204.8zM702.464 732.16l-143.36-38.912-27.648-125.952L634.88 450.56l146.432 45.056 24.576 148.48-103.424 88.064z m-287.744 81.92l-169.984-91.136 3.072-141.312 116.736-74.752 145.408 65.536L536.576 696.32 414.72 814.08zM135.168 487.424c-1.024-31.744 3.072-122.88 69.632-223.232l80.896-18.432 81.92 78.848-18.432 164.864-110.592 71.68c1.024-1.024-103.424-73.728-103.424-73.728z m654.336-14.336L648.192 430.08 563.2 280.576l52.224-98.304 106.496 5.12c16.384 15.36 103.424 103.424 119.808 206.848 1.024 1.024-52.224 78.848-52.224 78.848zM544.768 108.544L593.92 174.08l-52.224 99.328L382.976 307.2l-77.824-74.752 23.552-87.04c52.224-24.576 110.592-38.912 173.056-38.912 15.36 0 28.672 1.024 43.008 2.048zM169.984 275.456c-66.56 116.736-57.344 212.992-56.32 225.28l-20.48 38.912c0-7.168-1.024-16.384-1.024-23.552-1.024-89.088 27.648-172.032 77.824-240.64z m-3.072 478.208l52.224-18.432 203.776 107.52 60.416 57.344-9.216 25.6c-125.952-7.168-238.592-73.728-307.2-172.032z m331.776 174.08l8.192-23.552c31.744-6.144 105.472-22.528 166.912-44.032l21.504 18.432c-56.32 30.72-122.88 49.152-193.536 49.152h-3.072z m219.136-60.416l-24.576-21.504 16.384-89.088 112.64-95.232 57.344 18.432C845.824 757.76 788.48 822.272 717.824 867.328z" fill="#213154"/>
+                                    </svg>`,
+            // 图标7: 火焰
+            `<svg t="1780065307952" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="77726" width="200" height="200"><path d="M750.08 355.2L678.336 422.4s0-268.8-239.616-358.4c0 0-24 246.4-143.744 336-119.808 89.6-359.424 358.4 119.744 560 0 0-239.552-246.4 71.936-425.6 0 0-24 89.6 95.808 179.2s0 246.4 0 246.4 575.04-134.4 167.68-604.8z" fill="#F9981D" opacity=".7" p-id="77727"></path></svg>`,
+            // 图标8: 飞机
+            `<svg t="1780064504892" class="icon" viewBox="0 0 1445 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="12347" width="200" height="200"><path d="M687.635443 966.967089c-1.296203 0-2.592405 0-3.240506-0.648102-4.536709-1.296203-7.777215-5.18481-8.425317-9.721519l-60.921519-320.162025c-1.296203-5.832911 1.944304-11.665823 7.129114-13.610127l589.772152-252.111392c1.296203-0.648101 3.240506-1.296203 4.536709-1.296202 3.888608 0 7.777215 1.944304 10.36962 5.18481 3.240506 4.536709 3.240506 11.017722-1.296202 15.55443l-529.498735 572.273418c-1.296203 2.592405-4.536709 4.536709-8.425316 4.536709z" fill="#F5BB3C" p-id="12348"></path><path d="M1217.134177 382.379747l-529.498734 572.273418-60.921519-320.162026L1217.134177 382.379747m0-24.627848h-3.240506c-2.592405 0-4.536709 1.296203-7.129114 1.944304l-589.772152 251.463291c-10.36962 4.536709-16.850633 16.202532-14.258228 27.220253l60.921519 320.162025c1.944304 9.073418 8.425316 16.850633 17.498734 19.443038 1.944304 0.648101 4.536709 0.648101 7.129114 0.648101 6.481013 0 13.610127-2.592405 18.146836-7.777215l528.850633-571.625316c4.536709-4.536709 7.129114-10.36962 7.129114-16.850633 0-12.962025-10.36962-23.979747-23.331646-24.627848h-1.944304z m0 49.255696z" fill="#231815" p-id="12349"></path><path d="M624.121519 635.139241c-1.944304 0-3.240506-0.648101-5.18481-1.296203-3.240506-1.296203-5.832911-3.888608-6.481013-7.129114l-7.777215-21.387342-107.58481-257.944304c-2.592405-5.832911 0-12.313924 5.18481-15.55443 51.2-29.164557 104.344304-57.681013 159.432911-83.605063 86.84557-41.478481 294.237975-120.546835 410.248102-163.321519 1.296203-0.648101 2.592405-0.648101 4.536709-0.648101h0.648101c115.362025 6.481013 219.706329 40.83038 259.888607 69.994936 12.962025 9.073418 20.739241 23.331646 22.035443 38.886076 0 1.944304 0 4.536709-1.296202 6.481013-23.331646 50.551899-79.068354 143.23038-186.653165 200.263291-53.144304 27.868354-397.286076 173.043038-542.460759 234.612658-1.296203 0.648101-3.240506 0.648101-4.536709 0.648102z" fill="#F5BB3C" p-id="12350"></path><path d="M1075.848101 96.567089c121.194937 7.129114 219.706329 42.774684 253.407595 67.402531 9.721519 7.129114 16.202532 18.146835 16.850633 30.46076-23.979747 51.2-77.772152 139.989873-181.468354 195.078481-53.144304 27.868354-403.118987 176.283544-540.516456 233.964557l-7.777215-21.387342-107.58481-259.240506c40.182278-23.331646 93.974684-52.496203 158.136709-83.605064 84.901266-40.83038 283.220253-116.010127 408.951898-162.673417m0-25.27595c-3.240506 0-5.832911 0.648101-8.425316 1.296203-141.934177 53.144304-328.587342 124.435443-410.896203 163.96962-55.088608 26.572152-108.881013 54.440506-160.081012 84.253165-11.017722 6.481013-15.55443 19.443038-10.369621 31.10886l107.58481 257.944304 7.777216 21.387342c2.592405 6.481013 7.129114 11.665823 13.610126 14.258228 3.240506 1.296203 6.481013 1.944304 9.721519 1.944304s6.481013-0.648101 9.721519-1.944304c145.174684-61.56962 489.316456-206.744304 542.46076-235.26076 110.825316-58.977215 167.858228-154.248101 191.837974-206.096202 1.944304-3.888608 2.592405-8.425316 1.944304-12.313924-1.944304-19.443038-11.665823-36.941772-27.220253-47.959494-41.478481-29.812658-148.41519-65.458228-266.36962-71.93924 0 0-0.648101-0.648101-1.296203-0.648102z" fill="#231815" p-id="12351"></path><path d="M508.759494 355.159494c-1.296203 0-2.592405 0-3.888608-0.648102-3.240506-1.296203-5.832911-3.888608-7.129114-7.129114L359.696203 149.063291c-2.592405-3.888608-2.592405-8.425316-0.648102-12.313924 1.944304-3.888608 5.832911-6.481013 10.369621-7.129114l559.311392-37.589873c8.425316-1.296203 16.850633-2.592405 24.627848-3.888608 5.832911-0.648101 12.313924-1.296203 18.146835-1.944304 20.739241-1.944304 42.126582-3.240506 63.513925-3.240506 13.610127 0 27.868354 0.648101 41.478481 1.296203 5.832911 0.648101 10.36962 4.536709 11.665822 10.36962 0.648101 5.832911-2.592405 11.665823-7.777215 13.610126-115.362025 42.774684-322.106329 121.194937-408.303797 162.673418-53.792405 25.924051-106.936709 53.792405-157.488608 82.956962-1.944304 0.648101-3.888608 1.296203-5.832911 1.296203z" fill="#EA9B3F" p-id="12352"></path><path d="M1035.017722 95.270886c13.610127 0 27.220253 0.648101 40.830379 1.296203-125.731646 46.663291-324.050633 121.843038-408.951898 162.673417-64.162025 31.108861-118.602532 60.273418-158.136709 83.605064l-0.648102-1.296203-138.045569-199.61519 559.959493-38.237974c8.425316-1.296203 16.202532-2.592405 23.979747-3.888608 5.832911-0.648101 12.313924-1.296203 18.146836-1.944304 22.035443-1.944304 42.774684-2.592405 62.865823-2.592405m0-24.627848c-21.387342 0-43.422785 1.296203-64.162026 3.240506h-1.296202c-6.481013 0.648101-12.313924 1.296203-18.146836 1.944304-7.777215 0.648101-16.202532 1.944304-24.627848 3.888608l-558.663291 37.589873c-9.073418 0.648101-16.850633 5.832911-20.739241 13.610127-3.888608 7.777215-3.240506 17.498734 1.944304 24.627848L486.075949 353.863291c2.592405 5.832911 7.777215 10.36962 14.258228 12.313924 2.592405 0.648101 5.18481 1.296203 7.777215 1.296203 4.536709 0 8.425316-1.296203 12.313924-3.240507 50.551899-29.164557 103.048101-57.032911 156.840507-82.30886 85.549367-40.83038 291.64557-119.250633 407.007595-162.025317 11.017722-3.888608 17.498734-15.55443 15.55443-26.572152-1.944304-11.665823-11.665823-20.091139-23.331645-20.73924-12.962025-1.944304-27.220253-1.944304-41.478481-1.944304z" fill="#231815" p-id="12353"></path><path d="M926.78481 360.992405c-71.291139 0-117.95443-26.572152-131.564557-75.827848-11.017722-39.534177 0-90.086076 29.164557-135.453165 31.756962-48.607595 79.068354-84.253165 134.156962-99.159493 19.443038-5.18481 39.534177-7.777215 60.921519-7.777215 97.863291 0 200.263291 59.625316 218.410127 127.675949 7.129114 27.220253 5.18481 67.402532-48.607595 107.58481-33.701266 25.275949-84.901266 47.959494-147.118988 64.810127-42.126582 12.313924-81.012658 18.146835-115.362025 18.146835z" fill="#6970B2" p-id="12354"></path><path d="M1019.463291 55.736709c95.918987 0 189.893671 57.681013 206.744304 118.602532 20.091139 72.587342-74.531646 127.027848-187.301266 157.488607-40.182278 11.017722-78.420253 16.850633-112.76962 16.850633-60.921519 0-106.936709-19.443038-119.898734-66.75443-20.091139-72.587342 42.774684-188.597468 154.896202-219.058228 20.091139-5.18481 39.534177-7.129114 58.329114-7.129114m0-24.627848v24.627848-24.627848c-22.035443 0-43.422785 2.592405-64.162025 8.425316-57.681013 15.55443-107.58481 52.496203-141.286076 104.344304-31.108861 47.959494-42.774684 102.4-31.108861 145.174684 8.425316 31.756962 38.886076 84.901266 143.23038 84.901265 35.64557 0 75.827848-5.832911 119.250633-18.146835 44.718987-12.313924 106.936709-33.701266 151.655696-66.75443 58.977215-44.070886 61.56962-90.086076 53.144304-120.546836-20.091139-75.179747-125.731646-137.397468-230.724051-137.397468z" fill="#231815" p-id="12355"></path><path d="M537.275949 548.293671c-5.18481 0-9.721519-3.240506-11.665822-7.777215l-15.554431-38.886076c-2.592405-6.481013 0.648101-13.610127 7.129114-16.202532l42.774684-17.498734c1.296203-0.648101 3.240506-0.648101 4.536709-0.648101 4.536709 0 9.721519 2.592405 11.665822 7.777215l16.202532 39.534177c1.296203 3.240506 1.296203 6.481013 0 9.721519s-3.888608 5.18481-7.129114 6.481013l-43.422785 16.850633c-1.296203 0.648101-2.592405 0.648101-4.536709 0.648101z" fill="#E4E4E4" p-id="12356"></path><path d="M564.496203 479.594937l16.202531 39.534177-43.422785 16.850633-15.55443-38.886076 42.774684-17.498734m0-24.627848c-3.240506 0-6.481013 0.648101-9.073418 1.944303l-42.774684 17.498735c-12.313924 5.18481-18.794937 19.443038-13.610126 31.756962l15.55443 38.886076c3.888608 9.721519 12.962025 15.55443 22.683544 15.55443 3.240506 0 5.832911-0.648101 9.073418-1.944304l43.422785-16.850633c6.481013-2.592405 11.017722-7.129114 13.610126-13.610126 2.592405-5.832911 2.592405-12.962025 0-19.443038l-16.202531-39.534178c-3.888608-8.425316-12.962025-14.258228-22.683544-14.258227z" fill="#231815" p-id="12357"></path><path d="M573.56962 640.324051c-5.18481 0-9.721519-3.240506-11.665823-7.777216l-16.202531-41.478481c-2.592405-5.832911 0.648101-12.962025 6.481012-15.55443l43.422785-19.443038c1.296203-0.648101 3.240506-1.296203 5.18481-1.296202 1.296203 0 3.240506 0 4.536709 0.648101 3.240506 1.296203 5.832911 3.888608 7.129114 6.481012l22.683545 54.440507c1.296203 3.240506 1.296203 7.777215-0.648102 11.017721-1.944304 3.240506-5.18481 5.832911-9.073417 5.832912l-49.903798 6.481012c-0.648101 0.648101-1.296203 0.648101-1.944304 0.648102z" fill="#E4E4E4" p-id="12358"></path><path d="M600.789873 567.088608l22.683545 54.440506-49.903798 6.481013-16.202531-41.478481 43.422784-19.443038m0-25.27595c-3.240506 0-7.129114 0.648101-10.36962 1.944304l-43.422785 19.443038c-12.313924 5.18481-17.498734 19.443038-12.962025 31.756962l16.202532 41.478481c3.888608 9.721519 12.962025 15.55443 22.683544 15.55443h3.240506l49.903798-6.481012c7.777215-1.296203 14.258228-5.832911 18.146835-12.313924 3.888608-6.481013 4.536709-14.906329 1.296203-22.035443L623.473418 557.367089c-2.592405-6.481013-7.777215-11.017722-13.610127-13.610127-2.592405-1.296203-5.832911-1.944304-9.073418-1.944304z" fill="#231815" p-id="12359"></path><path d="M557.367089 598.84557c-1.296203 0-3.240506 0-4.536709-0.648102-3.240506-1.296203-5.832911-3.888608-7.129114-7.129114l-20.091139-50.551898c-1.296203-3.240506-1.296203-6.481013 0-9.721519s3.888608-5.18481 7.129114-6.481013l43.422784-16.850633c1.296203-0.648101 3.240506-0.648101 4.536709-0.648101 4.536709 0 9.721519 2.592405 11.665823 7.777215l19.443038 47.311392c2.592405 6.481013 0 12.962025-6.481013 16.202532l-43.422785 19.443038c-1.296203 0.648101-2.592405 1.296203-4.536708 1.296203z" fill="#EFEFEF" p-id="12360"></path><path d="M581.346835 519.129114l19.443038 47.311392-43.422784 19.443038-20.09114-50.551898 44.070886-16.202532m0-24.627848c-3.240506 0-5.832911 0.648101-9.073417 1.944304l-43.422785 16.850633c-6.481013 2.592405-11.017722 7.129114-13.610127 12.962025-2.592405 5.832911-2.592405 12.962025-0.648101 18.794937l20.091139 50.551898c2.592405 6.481013 7.129114 11.017722 13.610127 13.610127 3.240506 1.296203 5.832911 1.944304 9.073418 1.944304 3.240506 0 7.129114-0.648101 10.36962-1.944304l43.422785-19.443038c12.313924-5.18481 17.498734-19.443038 12.962025-31.756962l-19.443038-47.311393c-4.536709-10.36962-13.610127-16.202532-23.331646-16.202531z" fill="#231815" p-id="12361"></path><path d="M515.888608 492.556962c-2.592405 0-5.832911-0.648101-7.777216-2.592405l-174.987341-141.286076c-3.240506-2.592405-5.18481-7.129114-4.536709-11.665823s3.240506-7.777215 7.777215-9.721519l135.453165-54.440506c1.296203-0.648101 2.592405-0.648101 4.536708-0.648101 1.296203 0 2.592405 0 3.240507 0.648101l298.126582 84.901266c3.888608 1.296203 6.481013 3.888608 7.777215 7.129114l5.18481 12.962025c1.296203 3.240506 1.296203 6.481013 0 9.721519s-3.888608 5.18481-7.129114 6.481013L519.777215 491.908861c-1.296203 0.648101-2.592405 0.648101-3.888607 0.648101z" fill="#E84F4E" p-id="12362"></path><path d="M476.35443 284.516456l298.126583 84.901266 5.18481 12.962025-263.777215 97.863291-174.987342-141.286076 135.453164-54.440506m0-24.627848c-3.240506 0-6.481013 0.648101-9.073417 1.944303l-135.453165 54.440507c-8.425316 3.240506-13.610127 10.36962-14.906329 19.443038-1.296203 8.425316 1.944304 17.498734 9.073418 22.683544l174.987341 141.286076c4.536709 3.888608 9.721519 5.832911 15.554431 5.832911 2.592405 0 5.832911-0.648101 8.425316-1.296202l263.777216-97.863291c6.481013-2.592405 11.017722-7.129114 14.258227-12.962026 2.592405-5.832911 2.592405-12.962025 0-19.443038l-5.18481-12.962025c-2.592405-7.129114-9.073418-12.313924-16.202531-14.258228l-298.126583-84.901266c-2.592405-1.944304-5.18481-1.944304-7.129114-1.944303z" fill="#231815" p-id="12363"></path><path d="M779.665823 394.693671c-1.296203 0-2.592405 0-3.888608-0.648101l-298.126582-90.086076-132.212658 46.663291c-1.296203 0.648101-2.592405 0.648101-3.888608 0.648101-5.18481 0-9.721519-3.240506-11.665823-7.777215-2.592405-6.481013 0.648101-12.962025 6.481013-15.55443l136.101266-58.977216c1.296203-0.648101 3.240506-1.296203 5.18481-1.296202 1.296203 0 2.592405 0 3.888608 0.648101L777.721519 357.751899c3.240506 1.296203 6.481013 3.888608 7.777215 7.129114l5.18481 12.962025c1.944304 4.536709 0.648101 9.721519-2.592405 12.962025-1.944304 2.592405-5.18481 3.888608-8.425316 3.888608z" fill="#EB6B6A" p-id="12364"></path><path d="M477.002532 279.979747L773.832911 369.417722l5.184811 12.962025-302.01519-91.382279-136.101266 47.959494 136.101266-58.977215m0-25.27595c-3.240506 0-6.481013 0.648101-9.721519 1.944304l-136.101266 58.977215c-12.313924 5.18481-18.146835 19.443038-12.962025 31.756962 3.888608 9.721519 12.962025 15.55443 22.683544 15.554431 2.592405 0 5.18481-0.648101 8.425316-1.296203l128.324051-45.367088 294.886076 89.437974c2.592405 0.648101 4.536709 1.296203 7.129114 1.296203 7.129114 0 13.610127-2.592405 18.146835-7.777215 6.481013-7.129114 8.425316-16.850633 4.536709-25.924051l-5.18481-12.962025c-2.592405-7.129114-8.425316-12.313924-15.55443-14.258228L484.131646 256c-1.944304-0.648101-4.536709-1.296203-7.129114-1.296203z" fill="#231815" p-id="12365"></path><path d="M936.506329 340.253165c-69.346835 0-92.03038-31.108861-99.159494-57.032912-9.073418-31.756962 2.592405-86.84557 25.924051-122.491139 2.592405-3.888608 6.481013-5.832911 10.36962-5.832911 1.944304 0 3.888608 0.648101 5.832912 1.296202 5.18481 2.592405 11.017722 3.888608 16.850633 3.888608 19.443038 0 35.64557-16.202532 35.645569-35.64557 0-4.536709-0.648101-9.073418-2.592405-13.610127-2.592405-5.832911 0-12.962025 5.832912-15.55443 11.017722-5.832911 22.683544-10.36962 34.349367-13.610127 13.610127-3.888608 28.516456-5.832911 43.422784-5.832911 81.012658 0 176.283544 55.088608 191.189874 110.825317 5.832911 21.387342 2.592405 54.440506-46.663291 86.845569-36.293671 23.979747-86.197468 40.83038-121.843038 50.551899-36.941772 11.017722-70.643038 16.202532-99.159494 16.202532z" fill="#544C9C" p-id="12366"></path><path d="M1012.982278 88.789873c79.068354 0 165.913924 53.792405 179.524051 101.751899 15.55443 56.38481-72.587342 98.511392-160.081013 122.491139-34.349367 9.073418-67.402532 14.906329-95.918987 14.90633-44.718987 0-77.772152-13.610127-87.493671-47.959494-7.777215-28.516456 3.240506-80.364557 24.627848-112.76962 6.481013 3.888608 14.258228 5.832911 22.683545 5.832911 26.572152 0 47.959494-21.387342 47.959493-47.959494 0-6.481013-1.296203-12.962025-3.888607-18.146835 9.721519-5.18481 20.739241-9.073418 31.756962-12.313924 13.610127-4.536709 27.220253-5.832911 40.830379-5.832912m0-24.627848c-16.202532 0-32.405063 1.944304-46.663291 5.832912-12.313924 3.240506-24.627848 8.425316-36.941772 14.258228-11.665823 5.832911-16.202532 19.443038-11.665823 31.756962 1.296203 2.592405 1.944304 5.832911 1.944304 9.073417 0 12.962025-10.36962 23.331646-23.331645 23.331646-3.888608 0-7.777215-0.648101-11.017722-2.592405-3.888608-1.944304-7.777215-3.240506-11.665823-3.240507-8.425316 0-16.202532 3.888608-20.73924 11.017722-24.627848 38.237975-36.941772 97.863291-27.220253 132.860759 6.481013 24.627848 30.460759 66.106329 111.473417 66.10633 29.164557 0 64.162025-5.18481 102.4-15.554431 36.293671-9.721519 87.493671-27.220253 125.731646-51.848101 55.088608-36.941772 58.329114-75.179747 51.848101-100.455696-17.498734-62.217722-116.658228-120.546835-204.151899-120.546836z" fill="#231815" p-id="12367"></path><path d="M690.227848 977.336709c-1.296203 0-2.592405 0-3.888607-0.648101-4.536709-1.296203-7.777215-5.18481-8.425317-9.721519l-1.944304-10.369621c-0.648101-3.888608 0.648101-7.777215 3.240507-10.36962l489.964557-529.498734-537.27595 228.779747c-1.296203 0.648101-3.240506 1.296203-4.536709 1.296202-1.944304 0-3.888608-0.648101-5.832911-1.296202-3.240506-1.944304-5.832911-5.18481-6.481013-8.425317l-0.648101-4.536709-1.944304-4.536708c-1.944304-6.481013 0.648101-12.962025 7.129114-15.554431 145.174684-60.921519 487.372152-206.096203 539.868355-233.964557 101.103797-53.792405 153.6-141.286076 175.635443-189.245569 1.944304-4.536709 6.481013-7.129114 11.017721-7.129114h1.944304c5.832911 0.648101 9.721519 5.832911 10.36962 11.017721 0.648101 5.832911 0 11.665823-1.296202 16.850633-12.313924 51.848101-75.827848 176.283544-164.617722 274.146836-18.794937 20.739241-37.589873 38.886076-56.38481 55.088607l-0.648101 0.648101-436.820253 434.227849c-2.592405 1.944304-5.18481 3.240506-8.425317 3.240506z" fill="#EA9B3F" p-id="12368"></path><path d="M1346.106329 193.782278c0.648101 4.536709 0 9.073418-0.648101 12.962026-11.665823 50.551899-76.475949 174.339241-161.377215 268.313924-17.498734 19.443038-36.293671 37.589873-55.088608 53.792405-0.648101 0-0.648101 0.648101-1.296202 0.648101l-437.468355 434.87595-1.944304-10.369621L1217.134177 382.379747l-589.772152 252.111392-1.296202-5.832911-1.944304-5.832912c137.397468-57.681013 488.020253-206.096203 540.516456-233.964557 103.696203-55.088608 157.488608-143.23038 181.468354-195.078481M1346.106329 169.15443c-9.721519 0-18.146835 5.18481-22.683544 14.258228-21.387342 46.01519-71.939241 131.564557-170.450633 183.412658-53.144304 27.868354-425.802532 186.005063-538.572152 233.316456-12.313924 5.18481-18.146835 18.794937-13.610127 31.108861l1.296203 3.888608 0.648101 3.888607c1.296203 7.129114 5.832911 13.610127 12.962026 17.498734 3.888608 1.944304 7.777215 2.592405 11.665822 2.592405 3.240506 0 6.481013-0.648101 9.721519-1.944303l483.483545-206.744304-450.43038 487.372152c-5.18481 5.832911-7.777215 13.610127-5.832912 21.387341l1.944304 10.369621c1.944304 9.073418 8.425316 16.202532 16.850633 18.794936 2.592405 0.648101 5.18481 1.296203 7.129114 1.296203 6.481013 0 12.962025-2.592405 17.498734-7.129114l436.172152-433.579747h0.648101c18.794937-16.202532 38.237975-34.997468 57.681013-55.736709l0.648101-0.648101c90.086076-99.159494 154.896203-226.187342 167.210127-279.331646 1.296203-7.129114 1.944304-13.610127 1.296202-20.73924-1.296203-11.017722-9.073418-20.091139-20.091139-22.035443-1.944304-1.296203-3.888608-1.296203-5.18481-1.296203z" fill="#231815" p-id="12369"></path><path d="M510.703797 348.678481l-33.701265 34.349367 45.367088 114.065823 42.126583-17.498734z" fill="#979392" p-id="12370"></path><path d="M330.531646 735.594937l-217.762026 25.275949 161.377215-160.081013-117.306329-40.830379 165.913924-38.237975-59.625316-82.308861 195.726582 47.959494 64.162026 174.987342-93.974684 176.931645-5.832911-103.696202-84.901266 138.693671z" fill="#FFFFFF" p-id="12371"></path><path d="M292.941772 459.503797l156.840506 38.237975 59.625317 163.96962-70.643038 133.508861-5.832911-99.159494-84.253165 138.04557-6.481013-111.473418-195.726582 22.683545 149.711392-149.063291L200.911392 563.2l141.934178-32.405063-49.903798-71.29114M233.316456 419.321519l39.534177 54.440506 29.164557 40.182279L196.374684 537.924051l-83.605064 19.443038 81.012658 28.516455 57.681013 20.09114L129.620253 727.16962l-50.551899 50.551899 70.643038-8.425316 169.802532-19.443038 4.536709 85.549367 4.536709 79.068354 41.478481-68.050633 43.422785-71.291139 1.296202 20.091139 5.18481 88.141772 41.478481-77.772152L531.443038 672.729114l5.18481-9.721519-3.888607-10.36962L473.113924 489.316456l-4.536709-12.313924-12.962025-3.240507-156.840506-38.237974L233.316456 419.321519z" fill="#231815" p-id="12372"></path><path d="M627.362025 634.491139l60.273418 320.162026L1217.134177 382.379747zM1329.255696 163.96962c-33.701266-24.627848-132.212658-60.273418-253.407595-67.402531-125.731646 46.663291-324.050633 121.843038-408.951898 162.673417-64.162025 31.108861-118.602532 60.273418-158.136709 83.605064l107.58481 258.592405 7.777215 21.387341c137.397468-57.681013 488.020253-206.096203 540.516456-233.964557 103.696203-55.088608 157.488608-143.23038 181.468354-195.078481-0.648101-11.665823-7.129114-22.683544-16.850633-29.812658z" fill="#F5BB3C" p-id="12373"></path><path d="M1075.848101 96.567089c-33.053165-1.944304-68.050633-1.296203-103.048101 1.944303-5.832911 0.648101-12.313924 1.296203-18.146835 1.944304-7.777215 0.648101-16.202532 1.944304-23.979747 3.888608L370.713924 142.582278l138.04557 200.263292 0.648101 1.296202c40.182278-23.331646 93.974684-52.496203 158.136709-83.605063 84.253165-42.126582 282.572152-117.306329 408.303797-163.96962z" fill="#EA9B3F" p-id="12374"></path><path d="M1226.207595 174.339241c20.091139 72.587342-74.531646 127.027848-187.301266 157.488607s-212.577215 23.331646-232.020253-49.255696c-20.091139-72.587342 42.774684-188.597468 154.896202-219.058228s244.982278 37.589873 264.425317 110.825317z" fill="#6970B2" p-id="12375"></path><path d="M564.496203 479.594937l-42.126583 17.498734 14.906329 38.886076 44.070886-16.850633zM557.367089 586.531646l16.202531 41.478481 49.903798-6.481013-22.683545-54.440506z" fill="#E4E4E4" p-id="12376"></path><path d="M581.346835 519.129114l-44.070886 16.850633 20.09114 50.551899 43.422784-19.443038z" fill="#EFEFEF" p-id="12377"></path><path d="M773.832911 369.417722L476.35443 284.516456l-135.453164 54.440506 174.987342 141.286076L779.665823 382.379747z" fill="#E84F4E" p-id="12378"></path><path d="M779.665823 382.379747L477.002532 290.997468l-136.101266 47.959494 136.101266-58.977215L773.832911 369.417722z" fill="#EB6B6A" p-id="12379"></path><path d="M1192.506329 190.541772c-15.55443-56.38481-132.212658-120.546835-219.706329-96.567088-11.665823 3.240506-22.035443 7.129114-31.756962 12.313924 2.592405 5.832911 3.888608 11.665823 3.888608 18.146835 0 26.572152-21.387342 47.959494-47.959494 47.959494-8.425316 0-16.202532-1.944304-22.683544-5.832912-20.739241 32.405063-32.405063 84.253165-24.627849 112.769621 15.55443 56.38481 95.918987 57.032911 183.412659 33.053164 86.84557-23.331646 174.987342-65.458228 159.432911-121.843038z" fill="#544C9C" p-id="12380"></path><path d="M1127.048101 530.146835c0.648101 0 0.648101-0.648101 1.296203-0.648101 19.443038-16.202532 37.589873-34.349367 55.088607-53.792405 85.549367-93.974684 149.711392-217.762025 161.377216-268.313924 1.296203-4.536709 1.296203-9.073418 0.648101-12.962025-23.979747 51.2-77.772152 139.989873-181.468355 195.078481-53.144304 27.868354-403.118987 176.283544-540.516455 233.964557l1.944304 5.832911 1.296202 5.832912 589.772152-252.111393-529.498734 572.273418 1.944304 10.36962 438.116455-435.524051z" fill="#EA9B3F" p-id="12381"></path></svg>`,
+            // 图标9: 皇冠
+            `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                                        <defs>
+                                            <linearGradient id="grad9" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" style="stop-color:#ffd700;stop-opacity:1" />
+                                                <stop offset="100%" style="stop-color:#ff8c00;stop-opacity:1" />
+                                            </linearGradient>
+                                        </defs>
+                                        <polygon points="32,12 40,28 56,20 48,36 52,48 12,48 16,36 8,20 24,28" fill="url(#grad9)"/>
+                                        <circle cx="20" cy="32" r="3" fill="#fff"/>
+                                        <circle cx="32" cy="28" r="3" fill="#fff"/>
+                                        <circle cx="44" cy="32" r="3" fill="#fff"/>
+                                    </svg>`,
+            // 图标10: 汽车
+            `<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M766.976 508.736c80.576 0 152.448 32.128 199.232 82.176" fill="#AEBCC3"/>
+                                        <path d="M64.704 684.992c10.816 19.2 32.064 32.192 56.576 32.192h784.64c35.84 0 64.832-27.648 64.832-61.76v-17.408h-36.608a15.744 15.744 0 0 1-16.064-15.296V550.912a277.568 277.568 0 0 0-150.144-44.16h1.6l-55.04-0.256c-53.632-115.2-157.504-210.752-294.208-210.752-136.512 0-251.008 89.728-282.176 210.688h-16.832c-35.456 0-56.128 27.392-56.128 61.184" fill="#E8447A"/>
+                                        <path d="M64.704 654.464h13.76a39.168 39.168 0 0 0 40.064-38.272v-17.6c0-21.12-17.92-38.208-40.064-38.208h-13.376" fill="#F5BB1D"/>
+                                        <path d="M160 684.992a101.632 96.832 0 1 0 203.264 0 101.632 96.832 0 1 0-203.264 0Z" fill="#455963"/>
+                                        <path d="M218.88 684.992a42.752 40.768 0 1 0 85.504 0 42.752 40.768 0 1 0-85.504 0Z" fill="#AEBCC3"/>
+                                        <path d="M652.032 684.992a101.568 96.832 0 1 0 203.136 0 101.568 96.832 0 1 0-203.136 0Z" fill="#455963"/>
+                                        <path d="M710.912 684.992a42.752 40.768 0 1 0 85.504 0 42.752 40.768 0 1 0-85.504 0Z" fill="#AEBCC3"/>
+                                        <path d="M966.272 591.104v-0.192a257.92 257.92 0 0 0-48.192-40V622.72c0 8.448 7.232 15.296 16.064 15.296h36.608v-42.304l-4.48-4.608z" fill="#F5BB1D"/>
+                                        <path d="M405.568 335.616c-104.896 6.336-191.296 76.8-216.64 170.816h216.64V335.616zM445.696 506.432h216.64c-41.216-86.848-117.12-159.616-216.64-170.048v170.048z" fill="#631536"/>
+                                    </svg>`
+        ];
+
+        // 创建SVG元素
+        function createSvgElement(svgHtml) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = svgHtml;
+            const svg = tempDiv.querySelector('svg');
+            if (svg) {
+                svg.setAttribute('width', '100%');
+                svg.setAttribute('height', '100%');
+            }
+            return svg;
+        }
+
+        // 初始化游戏卡片图标
+        function initializeGameIcons() {
+            gameCards.forEach((card) => {
+                // 默认使用第一个图标（游戏手柄）
+                const iconIndex = 0;
+                card.dataset.iconIndex = iconIndex;
+                const iconElement = card.querySelector('.game-icon');
+                if (iconElement) {
+                    iconElement.innerHTML = '';
+                    const iconWrapper = document.createElement('span');
+                    iconWrapper.className = 'game-icon-svg';
+                    // 第一个图标是emoji，直接设置innerHTML
+                    iconWrapper.innerHTML = iconSvgs[iconIndex];
+                    iconElement.appendChild(iconWrapper);
+                }
+            });
+        }
+
+        // 渲染图标选择器
+        function renderIconSelector() {
+            const selector = document.getElementById('iconSelector');
+            selector.innerHTML = '';
+
+            iconSvgs.forEach((iconContent, index) => {
+                const option = document.createElement('div');
+                option.className = 'icon-option' + (index === selectedIconIndex ? ' selected' : '');
+
+                // 只对索引0的图标进行特殊处理（选择器中显示20px大小）
+                if (iconContent.includes('<svg')) {
+                    const svg = createSvgElement(iconContent);
+                    if (svg) {
+                        option.appendChild(svg);
+                    }
+                } else {
+                    // 其他emoji图标直接显示
+                    option.innerHTML = iconContent;
+                }
+
+                option.onclick = () => selectIcon(index);
+                selector.appendChild(option);
+            });
+        }
+
+        // 选择图标
+        function selectIcon(index) {
+            selectedIconIndex = index;
+
+            // 更新选择状态
+            const options = document.querySelectorAll('.icon-option');
+            options.forEach((opt, i) => {
+                opt.classList.toggle('selected', i === index);
+            });
+        }
+
+        // 新增：显示提示框函数
+        function showAlertModal(message) {
+            // 设置提示文本
+            document.getElementById('alertMessageText').textContent = message || '操作成功';
+            // 显示提示框
+            alertModal.classList.add('active');
+        }
+
+        // 新增：关闭提示框函数
+        function closeAlertModal() {
+            alertModal.classList.remove('active');
+        }
+
+        // 点击提示框遮罩层关闭
+        alertModal.addEventListener('click', function (e) {
+            if (e.target === alertModal) {
+                closeAlertModal();
+            }
+        });
+
+        function selectGame() {
+            // 移除所有卡片的active状态
+            gameCards.forEach(card => card.classList.remove('active'));
+            // 给当前点击的卡片添加active状态
+            event.currentTarget.classList.add('active');
+            // 更新当前选中的卡片
+            activeGameCard = event.currentTarget;
+        }
+
+        function setGameFrozen(buttonIndex, isFrozen) {
+            if (buttonIndex < 0 || buttonIndex >= gameCards.length) {
+                console.error(`按钮序号 ${buttonIndex} 无效，范围应为 0-${gameCards.length - 1}`);
+                return;
+            }
+
+            const targetCard = gameCards[buttonIndex];
+            if (isFrozen) {
+                targetCard.classList.add('frozen');
+            } else {
+                targetCard.classList.remove('frozen');
+            }
+
+            console.log(`按钮 ${buttonIndex} 冻结状态: ${isFrozen}`);
+        }
+
+        function freezeGame() {
+            const activeCard = document.querySelector('.game-card.active');
+            if (activeCard && activeCard.classList.contains('frozen')) {
+                console.log('该游戏已经在冻结状态，无需重复冻结');
+                return;
+            }
+            sendWebViewCmd_FreezeGame(getActiveGameNumber() - 1);
+        }
+
+        function thawGame() {
+            sendWebViewCmd_ThawGame(getActiveGameNumber() - 1);
+        }
+
+        function toggleOption(optionName) {
+            const checkbox = document.getElementById(`${optionName}Checkbox`);
+
+            checkbox.classList.toggle('checked');
+            checkbox.classList.toggle('unchecked');
+
+            const isEnabled = checkbox.classList.contains('checked');
+            console.log(`${optionName} enabled: ${isEnabled}`);
+
+            sendWebViewCmd_ToggleOption(optionName);
+        }
+
+
+        // 新增弹窗相关函数
+        function editShortcuts() {
+            // 检查是否有选中的卡片
+            if (!activeGameCard) {
+                alert('请先选择一个要编辑的快捷按钮！');
+                return;
+            }
+
+            // 获取当前选中卡片的现有文本和图标
+            const currentName = activeGameCard.querySelector('.game-name').textContent.trim();
+            const currentDesc = activeGameCard.querySelector('.game-name-en').textContent.trim().replace(/[()]/g, '');
+            const currentIconIndex = activeGameCard.dataset.iconIndex ? parseInt(activeGameCard.dataset.iconIndex) : 0;
+            selectedIconIndex = currentIconIndex;
+
+            // 填充到输入框并显示弹窗
+            document.getElementById('processNameInput').value = currentDesc;
+            document.getElementById('processDescInput').value = currentName;
+
+            // 渲染并显示图标选择器
+            renderIconSelector();
+            editModal.classList.add('active');
+        }
+
+        function closeEditModal() {
+            editModal.classList.remove('active');
+        }
+
+        // 获取当前激活按钮的显示序号
+        function getActiveGameNumber() {
+            // 找到当前激活的game-card
+            const activeCard = document.querySelector('.game-card.active');
+            if (!activeCard) return null;
+
+            // 提取序号文本并转为数字
+            const numberElement = activeCard.querySelector('.game-number');
+            const number = numberElement ? parseInt(numberElement.textContent.trim()) : null;
+
+            return number;
+        }
+
+
+        function confirmEditShortcut() {
+            // 检查是否有选中的卡片
+            if (!activeGameCard) {
+                alert('请先选择一个要编辑的快捷按钮！');
+                closeEditModal();
+                return;
+            }
+
+            const processName = document.getElementById('processNameInput').value.trim();
+            const processDesc = document.getElementById('processDescInput').value.trim();
+
+            // 更新选中卡片的显示文本和图标
+            activeGameCard.querySelector('.game-name').textContent = processDesc;
+            activeGameCard.querySelector('.game-name-en').textContent = processName ? `(${processName})` : '';
+            activeGameCard.dataset.iconIndex = selectedIconIndex;
+
+            // 更新卡片图标
+            const iconElement = activeGameCard.querySelector('.game-icon');
+            if (iconElement) {
+                const iconWrapper = iconElement.querySelector('.game-icon-svg');
+                if (iconWrapper) {
+                    // 更新现有图标
+                    const iconContent = iconSvgs[selectedIconIndex];
+                    if (iconContent.includes('<svg')) {
+                        iconWrapper.innerHTML = '';
+                        const svg = createSvgElement(iconContent);
+                        if (svg) {
+                            iconWrapper.appendChild(svg);
+                        }
+                    } else {
+                        // emoji图标直接设置innerHTML
+                        iconWrapper.innerHTML = iconContent;
+                    }
+                } else {
+                    // 如果没有图标包装器，创建一个
+                    const newIconWrapper = document.createElement('span');
+                    newIconWrapper.className = 'game-icon-svg';
+                    const iconContent = iconSvgs[selectedIconIndex];
+                    if (iconContent.includes('<svg')) {
+                        const svg = createSvgElement(iconContent);
+                        if (svg) {
+                            newIconWrapper.appendChild(svg);
+                        }
+                    } else {
+                        // emoji图标直接设置innerHTML
+                        newIconWrapper.innerHTML = iconContent;
+                    }
+                    iconElement.innerHTML = '';
+                    iconElement.appendChild(newIconWrapper);
+                }
+            }
+
+            console.log('编辑快捷按钮成功:', {
+                进程名: processName,
+                描述: processDesc,
+                图标索引: selectedIconIndex
+            });
+
+            closeEditModal();
+
+            sendWebViewCmd_SetShortCutButtonInfo(getActiveGameNumber() - 1, processName, processDesc, selectedIconIndex);
+        }
+
+        // 通过索引修改指定快捷按钮信息的函数
+        function changeShortcutButtonInfo(index, processName, comment, iconIndex) {
+            // 验证索引有效性
+            if (index < 0 || index >= gameCards.length) {
+                console.error(`索引 ${index} 超出范围，当前只有 ${gameCards.length} 个快捷按钮`);
+                alert(`索引无效！当前只有 ${gameCards.length} 个快捷按钮`);
+                return;
+            }
+
+
+            // 获取指定索引的卡片
+            const targetCard = gameCards[index];
+            // 清理输入参数的首尾空格
+            const cleanProcessName = processName.trim();
+
+            // 解析comment，分离描述和图标索引（格式：描述|图标索引）
+            let cleanComment = comment ? comment.trim() : '';
+
+            // 更新卡片显示信息
+            targetCard.querySelector('.game-name').textContent = cleanComment;
+            targetCard.querySelector('.game-name-en').textContent = cleanProcessName ? `(${cleanProcessName})` : '';
+            targetCard.dataset.iconIndex = iconIndex;
+
+            // 更新图标
+            const iconElement = targetCard.querySelector('.game-icon');
+            if (iconElement) {
+                const iconWrapper = iconElement.querySelector('.game-icon-svg');
+                if (iconWrapper) {
+                    // 更新现有图标
+                    const iconContent = iconSvgs[iconIndex];
+                    if (iconContent.includes('<svg')) {
+                        iconWrapper.innerHTML = '';
+                        const svg = createSvgElement(iconContent);
+                        if (svg) {
+                            iconWrapper.appendChild(svg);
+                        }
+                    } else {
+                        // emoji图标直接设置innerHTML
+                        iconWrapper.innerHTML = iconContent;
+                    }
+                } else {
+                    // 如果没有图标包装器，创建一个
+                    const newIconWrapper = document.createElement('span');
+                    newIconWrapper.className = 'game-icon-svg';
+                    const iconContent = iconSvgs[iconIndex];
+                    if (iconContent.includes('<svg')) {
+                        const svg = createSvgElement(iconContent);
+                        if (svg) {
+                            newIconWrapper.appendChild(svg);
+                        }
+                    } else {
+                        // emoji图标直接设置innerHTML
+                        newIconWrapper.innerHTML = iconContent;
+                    }
+                    iconElement.innerHTML = '';
+                    iconElement.appendChild(newIconWrapper);
+                }
+            }
+
+            console.log(`成功修改索引 ${index} 的快捷按钮信息:`, {
+                进程名: cleanProcessName,
+                描述: cleanComment,
+                图标索引: iconIndex
+            });
+        }
+
+        // 初始化标题栏图标
+        function initializeTitleIcon() {
+            const titleIcon = document.getElementById('titleIcon');
+            if (titleIcon && iconSvgs.length > 0) {
+                const iconContent = iconSvgs[0];
+                if (iconContent.includes('<svg')) {
+                    const svg = createSvgElement(iconContent);
+                    if (svg) {
+                        titleIcon.innerHTML = '';
+                        titleIcon.appendChild(svg);
+                    }
+                } else {
+                    titleIcon.innerHTML = iconContent;
+                }
+            }
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            initializeGameIcons();
+            initializeTitleIcon();
+        });
+
+        // 点击弹窗外部关闭
+        editModal.addEventListener('click', function (e) {
+            if (e.target === editModal) {
+                closeEditModal();
+            }
+        });
+    </script>
+</body>
+</html>
