@@ -3,6 +3,12 @@
 
 一个现代化的Windows游戏进程冻结工具，支持暂停和恢复游戏进程，帮助您更好地管理游戏资源。
 
+## 🖼️ 预览
+
+<p align="center">
+  <img src="preview.jpg" alt="TimeCage Preview" width="600">
+</p>
+
 ## ✨ 功能特性
 
 - **进程冻结/解冻** - 通过 `NtSuspendProcess` / `NtResumeProcess` 高效管理进程
