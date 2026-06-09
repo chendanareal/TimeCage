@@ -257,6 +257,36 @@ bool CWebView2Manager::SendJsonCommand(CString strCmd, CString strParam1,
 }
 
 /**
+ * @brief 向网页发送 JSON 命令
+ *
+ * 该方法会将命令和参数打包成 JSON 对象，
+ * 然后通过 ExecuteScript 发送给网页的 onReceiveCppJson 函数。
+ *
+ * @param strCmd 命令名称
+ * @param jsonParam1 参数1
+ * @return 发送是否成功
+ */
+bool CWebView2Manager::SendJsonCommand(CString strCmd, json &jsonParam1)
+{
+    // 检查是否已初始化
+    if (!m_bInitialized || !m_webView)
+        return false;
+
+    // 构建 JSON 对象
+    json myJson;
+    myJson["cmd"] = std::string(CW2A(strCmd, CP_UTF8));
+    myJson["param1"] = jsonParam1;
+
+    // 序列化 JSON 为字符串
+    std::string stdJsonStr = myJson.dump();
+    CString strJsonCmd(CA2W(stdJsonStr.c_str(), CP_UTF8));
+
+    // 执行脚本
+    return ExecuteScript(strJsonCmd);
+}
+
+
+/**
  * @brief 在网页中执行 JavaScript 脚本
  * @param strScript 要执行的脚本
  * @return 执行是否成功

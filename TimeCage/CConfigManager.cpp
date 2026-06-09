@@ -60,7 +60,7 @@ CString CConfigManager::GetConfigFilePath()
     CreateDirectory(strConfigPath, NULL);
 
     // 拼接文件名
-    strConfigPath += _T("ShortCutConfig.ini");
+    strConfigPath += _T("Config.ini");
 
     return strConfigPath;
 }
@@ -149,3 +149,131 @@ bool CConfigManager::WriteString(LPCTSTR section, LPCTSTR key, LPCTSTR value, LP
     return WritePrivateProfileString(section, key, value, filePath) != FALSE;
 }
 
+/**
+ * @brief 从配置文件读取布尔值
+ * @param section INI 节名
+ * @param key INI 键名
+ * @param defaultValue 默认值，当键不存在时返回
+ * @param filePath 配置文件路径
+ * @return 读取到的布尔值
+ */
+BOOL CConfigManager::ReadBool(LPCTSTR section, LPCTSTR key, BOOL defaultValue, LPCTSTR filePath)
+{
+    CString strValue = ReadString(section, key, defaultValue ? _T("1") : _T("0"), filePath);
+    return (strValue.Compare(_T("1")) == 0 || strValue.CompareNoCase(_T("true")) == 0);
+}
+
+/**
+ * @brief 向配置文件写入布尔值
+ * @param section INI 节名
+ * @param key INI 键名
+ * @param value 要写入的布尔值
+ * @param filePath 配置文件路径
+ * @return 写入是否成功
+ */
+bool CConfigManager::WriteBool(LPCTSTR section, LPCTSTR key, BOOL value, LPCTSTR filePath)
+{
+    return WriteString(section, key, value ? _T("1") : _T("0"), filePath);
+}
+
+
+/**
+* @brief 加载应用程序设置
+* @param configData 输出参数，配置信息
+* @return 加载是否成功
+*/
+bool CConfigManager::LoadAppSettings(ConfigData& configData)
+{
+    CString strIniPath = GetConfigFilePath();
+
+    configData.bHideWindow = ReadBool(_T("Settings"), _T("HideWindow"), TRUE, strIniPath);
+    configData.bHideWindowEnhanced = ReadBool(_T("Settings"), _T("HideWindowEnhanced"), FALSE, strIniPath);
+    configData.bSingleInstance = ReadBool(_T("Settings"), _T("SingleInstance"), TRUE, strIniPath);
+    configData.bMinimizeToTray = ReadBool(_T("Settings"), _T("MinimizeToTray"), TRUE, strIniPath);
+    configData.bBossKeyEnabled = ReadBool(_T("Settings"), _T("BossKeyEnabled"), FALSE, strIniPath);
+    configData.strBossKey = ReadString(_T("Settings"), _T("BossKey"), _T(""), strIniPath);
+    configData.bAutoStart = ReadBool(_T("Settings"), _T("AutoStart"), FALSE, strIniPath);
+
+    return true;
+}
+
+
+/**
+ * @brief 保存应用程序设置
+ * @param configData 配置信息
+ * @return 保存是否成功
+ */
+bool CConfigManager::SaveAppSettings(const ConfigData& configData)
+{
+    CString strIniPath = GetConfigFilePath();
+
+    WriteBool(_T("Settings"), _T("HideWindow"), configData.bHideWindow, strIniPath);
+    WriteBool(_T("Settings"), _T("HideWindowEnhanced"), configData.bHideWindowEnhanced, strIniPath);
+    WriteBool(_T("Settings"), _T("SingleInstance"), configData.bSingleInstance, strIniPath);
+    WriteBool(_T("Settings"), _T("MinimizeToTray"), configData.bMinimizeToTray, strIniPath);
+    WriteBool(_T("Settings"), _T("BossKeyEnabled"), configData.bBossKeyEnabled, strIniPath);
+    WriteString(_T("Settings"), _T("BossKey"), configData.strBossKey, strIniPath);
+    WriteBool(_T("Settings"), _T("AutoStart"), configData.bAutoStart, strIniPath);
+
+    return true;
+}
+
+/**
+ * @brief 从配置文件读取整数
+ * @param section INI 节名
+ * @param key INI 键名
+ * @param defaultValue 默认值，当键不存在时返回
+ * @param filePath 配置文件路径
+ * @return 读取到的整数
+ */
+int CConfigManager::ReadInt(LPCTSTR section, LPCTSTR key, int defaultValue, LPCTSTR filePath)
+{
+    int nResult;
+    nResult = GetPrivateProfileInt(section, key, defaultValue, filePath);
+    return nResult;
+}
+
+/**
+ * @brief 向配置文件写入整数
+ * @param section INI 节名
+ * @param key INI 键名
+ * @param value 要写入的整数
+ * @param filePath 配置文件路径
+ * @return 写入是否成功
+ */
+bool CConfigManager::WriteInt(LPCTSTR section, LPCTSTR key, int value, LPCTSTR filePath)
+{
+    CString strData;
+
+    strData.Format(_T("%d"), value);
+    return WritePrivateProfileString(section, key, strData, filePath) != FALSE;
+}
+
+
+/**
+* @brief 从配置文件加载其它配置
+* @param nLastSelShortButtonIndex 输出参数，最后一次选择快捷按钮序号
+* @return 加载是否成功
+*/
+bool CConfigManager::LoadOther(int& nLastSelShortButtonIndex)
+{
+    CString strIniPath = GetConfigFilePath();
+
+    nLastSelShortButtonIndex = ReadInt(_T("Settings"), _T("LastSelShortButtonIndex"), 0, strIniPath);
+
+    return  true;
+}
+
+/**
+ * @brief 保存其它配置
+ * @param nLastSelShortButtonIndex 最后一次选择快捷按钮序号
+ * @return 保存是否成功
+ */
+bool CConfigManager::SaveOther(int nLastSelShortButtonIndex)
+{
+    CString strIniPath = GetConfigFilePath();
+
+    WriteInt(_T("Settings"), _T("LastSelShortButtonIndex"), nLastSelShortButtonIndex, strIniPath);
+
+    return  true;
+}

@@ -223,6 +223,14 @@ public:
         CString strParam4 = _T(""));
 
     /**
+     * @brief 向网页发送 JSON 命令
+     * @param strCmd 命令名称
+     * @param jsonParam1 参数1
+     * @return 发送是否成功
+     */
+    bool SendJsonCommand(CString strCmd, json& jsonParam1);
+
+    /**
      * @brief 在网页中执行 JavaScript 脚本
      * @param strScript 要执行的脚本
      * @return 执行是否成功

@@ -5,10 +5,10 @@
 #pragma once
 
 #ifndef __AFXWIN_H__
-	#error "在包含此文件之前包含 'pch.h' 以生成 PCH"
+    #error "在包含此文件之前包含 'pch.h' 以生成 PCH"
 #endif
 
-#include "resource.h"		// 主符号
+#include "resource.h"        // 主符号
 
 
 // CTimeCageApp:
@@ -18,15 +18,20 @@
 class CTimeCageApp : public CWinApp
 {
 public:
-	CTimeCageApp();
+    CTimeCageApp();
+    virtual ~CTimeCageApp();
 
 // 重写
 public:
-	virtual BOOL InitInstance();
+    virtual BOOL InitInstance();
 
 // 实现
+private:
+    HANDLE m_hMutex;                    // 互斥体句柄
+    BOOL CheckSingleInstance();         // 检查单实例
+    void ActivateExistingInstance();    // 激活已存在的实例
 
-	DECLARE_MESSAGE_MAP()
+    DECLARE_MESSAGE_MAP()
 };
 
 extern CTimeCageApp theApp;

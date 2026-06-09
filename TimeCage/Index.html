@@ -20,6 +20,17 @@
         // ===============================================================
         // 1. 命令常量定义区
         // ===============================================================
+        // 配置项
+        let AppConfig = {
+            hideWindow: true,           // 冻结时自动隐藏窗口
+            hideWindowEnhanced: false,  // 隐藏窗口增强
+            singleInstance: true,       // 单实例
+            minimizeToTray: true,       // 隐藏到托盘区
+            bossKeyEnabled: false,      // 是否启用老板键
+            bossKey: "",                // 老板键
+            autoStart: false            // 开机自动启动
+        };
+
         /**
          * WebView 通信命令常量
          * 说明：定义所有在 C++ 和 JS 之间传递的命令名称
@@ -29,10 +40,11 @@
             None: "WebViewCmd_None",
             ShowMessageBox: "WebViewCmd_ShowMessageBox",                // 显示提示框
             SetAppName: "WebViewCmd_SetAppName",                        // 设置标题栏文本
+            SetConfigInfo: "WebViewCmd_SetConfigInfo",                  // 设置配置信息
             SetShortCutButtonInfo: "WebViewCmd_SetShortCutButtonInfo",  // 设置快捷按钮信息
+            SelShortCutButton: "WebViewCmd_SelShortCutButton",          // 选择快捷按钮
             FreezeGame: "WebViewCmd_FreezeGame",                        // 冻结游戏
             ThawGame: "WebViewCmd_ThawGame",                            // 解冻游戏
-            ToggleOption: "WebViewCmd_ToggleOption",                    // 切换选项
             SysClose: "WebViewCmd_SysClose",                            // 退出程序
             SysMinimize: "WebViewCmd_SysMinimize"                       // 最小化窗口
         };
@@ -47,11 +59,16 @@
          */
         function onReceiveCppJson(jsonStringFromCpp) {
             try {
+                //alert(jsonStringFromCpp);
                 let data = JSON.parse(jsonStringFromCpp);
 
+                
                 // 根据命令类型分发到对应的处理函数
                 if (WebViewCmd.SetAppName == data.cmd) {
                     processWebViewCmd_SetAppName(data.param1);
+                }
+                else if (WebViewCmd.SetConfigInfo == data.cmd) {
+                    processWebViewCmd_SetConfigInfo(data.param1);
                 }
                 else if (WebViewCmd.SetShortCutButtonInfo == data.cmd) {
                     processWebViewCmd_SetShortCutButtonInfo(parseInt(data.param1), data.param2, data.param3, parseInt(data.param4));
@@ -64,6 +81,9 @@
                 }
                 else if (WebViewCmd.ThawGame == data.cmd) {
                     processWebViewCmd_ThawGame(parseInt(data.param1));
+                }
+                else if (WebViewCmd.SelShortCutButton == data.cmd) {
+                    processWebViewCmd_SelShortCutButton(parseInt(data.param1));
                 }
 
             } catch (error) {
@@ -107,6 +127,23 @@
         // ===============================================================
         // 4. 发送命令的快捷函数区（JS → C++）
         // ===============================================================
+        /** 发送应用程序配置信息的命令 */
+        function sendWebViewCmd_SetConfigInfo() {
+            // 直接使用 AppConfig 的内容来发送
+            const configData = {
+                hideWindow: AppConfig.hideWindow ? "1" : "0",
+                hideWindowEnhanced: AppConfig.hideWindowEnhanced ? "1" : "0",
+                singleInstance: AppConfig.singleInstance ? "1" : "0",
+                minimizeToTray: AppConfig.minimizeToTray ? "1" : "0",
+                bossKeyEnabled: AppConfig.bossKeyEnabled ? "1" : "0",
+                bossKey: AppConfig.bossKey,
+                autoStart: AppConfig.autoStart ? "1" : "0"
+            };
+            // 序列化为JSON字符串，放到param1中发送
+            const jsonStr = JSON.stringify(configData);
+            sendWebViewCmd(createCmdString(WebViewCmd.SetConfigInfo, jsonStr, '', '', ''));
+        }
+
         /** 发送设置快捷按钮信息的命令 */
         function sendWebViewCmd_SetShortCutButtonInfo(buttonIndex, processName, comment, iconIndex) {
             sendWebViewCmd(createCmdString(WebViewCmd.SetShortCutButtonInfo, String(buttonIndex), processName, comment, String(iconIndex)));
@@ -122,11 +159,6 @@
             sendWebViewCmd(createCmdString(WebViewCmd.ThawGame, String(index), '', '', ''));
         }
 
-        /** 发送切换选项的命令 */
-        function sendWebViewCmd_ToggleOption(option) {
-            sendWebViewCmd(createCmdString(WebViewCmd.ToggleOption, option, '', '', ''));
-        }
-
         /** 发送退出程序的命令 */
         function sendWebViewCmd_SysQuit() {
             sendWebViewCmd(createCmdString(WebViewCmd.SysClose, '', '', '', ''));
@@ -137,6 +169,11 @@
             sendWebViewCmd(createCmdString(WebViewCmd.SysMinimize, '', '', '', ''));
         }
 
+        /** 发送选择快捷按钮序号的命令 */
+        function sendWebViewCmd_SelShortCutButton(index) {
+            sendWebViewCmd(createCmdString(WebViewCmd.SelShortCutButton, String(index), '', '', ''));
+        }
+
         // ===============================================================
         // 5. 处理 C++ 命令的具体实现区（C++ → JS）
         // ===============================================================
@@ -145,9 +182,91 @@
             document.getElementById("captionLabel").innerText = appName;
         }
 
+        /** 处理设置配置信息的命令 */
+        function processWebViewCmd_SetConfigInfo(configData) {
+            try {
+                // 更新全局配置对象
+                if (configData.hideWindow !== undefined) {
+                    AppConfig.hideWindow = (configData.hideWindow === "1");
+                }
+                if (configData.hideWindowEnhanced !== undefined) {
+                    AppConfig.hideWindowEnhanced = (configData.hideWindowEnhanced === "1");
+                }
+                if (configData.singleInstance !== undefined) {
+                    AppConfig.singleInstance = (configData.singleInstance === "1");
+                }
+                if (configData.minimizeToTray !== undefined) {
+                    AppConfig.minimizeToTray = (configData.minimizeToTray === "1");
+                }
+                if (configData.bossKeyEnabled !== undefined) {
+                    AppConfig.bossKeyEnabled = (configData.bossKeyEnabled === "1");
+                }
+                if (configData.bossKey !== undefined) {
+                    AppConfig.bossKey = configData.bossKey;
+                }
+                if (configData.autoStart !== undefined) {
+                    AppConfig.autoStart = (configData.autoStart === "1");
+                }
+                
+                // 更新所有复选框状态（包括主界面上的 hideWindow 和 hideWindowEnhanced）
+                updateAllSettingsUI();
+            } catch (error) {
+                console.error("解析配置信息失败:", error);
+            }
+        }
+        
+        /** 更新所有设置的UI（包括主界面和设置弹窗） */
+        function updateAllSettingsUI() {
+            // 更新设置弹窗中的复选框
+            updateSettingsUI();
+            
+            // 更新主界面上的复选框
+            ['hideWindow', 'hideWindowEnhanced'].forEach(settingName => {
+                const checkbox = document.getElementById(`${settingName}Checkbox`);
+                if (checkbox) {
+                    if (AppConfig[settingName]) {
+                        checkbox.classList.add('checked');
+                        checkbox.classList.remove('unchecked');
+                    } else {
+                        checkbox.classList.remove('checked');
+                        checkbox.classList.add('unchecked');
+                    }
+                }
+            });
+        }
+
         /** 处理设置快捷按钮信息的命令 */
         function processWebViewCmd_SetShortCutButtonInfo(index, processName, comment, iconIndex) {
             changeShortcutButtonInfo(index, processName, comment, iconIndex);
+        }
+
+        /** 更新设置UI */
+        function updateSettingsUI() {
+            // 只更新设置窗口中显示的配置项
+            ['singleInstance', 'minimizeToTray', 'bossKeyEnabled', 'autoStart'].forEach(settingName => {
+                const checkbox = document.getElementById(`${settingName}Checkbox`);
+                if (checkbox) {
+                    if (AppConfig[settingName]) {
+                        checkbox.classList.add('checked');
+                        checkbox.classList.remove('unchecked');
+                    } else {
+                        checkbox.classList.remove('checked');
+                        checkbox.classList.add('unchecked');
+                    }
+                }
+            });
+            
+            // 更新老板键输入框的值
+            const bossKeyInput = document.getElementById('bossKeyInput');
+            if (bossKeyInput) {
+                bossKeyInput.value = AppConfig.bossKey;
+                // 根据是否启用老板键来设置输入框状态
+                if (AppConfig.bossKeyEnabled) {
+                    bossKeyInput.classList.remove('disabled');
+                } else {
+                    bossKeyInput.classList.add('disabled');
+                }
+            }
         }
 
         /** 处理显示提示框的命令 */
@@ -163,6 +282,18 @@
         /** 处理解冻游戏的命令 */
         function processWebViewCmd_ThawGame(index) {
             setGameFrozen(index, false);
+        }
+
+        /** 处理设置选中快捷按钮的命令 */
+        function processWebViewCmd_SelShortCutButton(index) {
+            // 移除所有卡片的active状态
+            gameCards.forEach(card => card.classList.remove('active'));
+            // 根据序号找到对应的卡片并设置active
+            if (index >= 0 && index < gameCards.length) {
+                gameCards[index].classList.add('active');
+                // 更新当前选中的卡片
+                activeGameCard = gameCards[index];
+            }
         }
 
         // ===============================================================
@@ -360,6 +491,19 @@
             font-size: 12px;
             transition: all 0.25s ease;
         }
+
+        .btn-settings {
+            background: linear-gradient(145deg, #3a4a5a 0%, #2a3a4a 100%);
+            color: #a0aec0;
+            border: 1px solid rgba(160, 174, 192, 0.35);
+            font-size: 20px;
+        }
+
+            .btn-settings:hover {
+                background: linear-gradient(145deg, #4a5a6a 0%, #3a4a5a 100%);
+                box-shadow: 0 0 15px rgba(160, 174, 192, 0.35);
+                color: #cbd5e0;
+            }
 
         .btn-minimize {
             background: linear-gradient(145deg, #3a4a5a 0%, #2a3a4a 100%);
@@ -1140,6 +1284,71 @@
             filter: drop-shadow(0 0 20px rgba(0, 240, 255, 0.7));
             transform: scale(1.15);
         }
+
+        /* 老板键样式 */
+        .boss-key-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 12px 0;
+        }
+
+        .boss-key-label {
+            font-size: 13px;
+            color: #d1d5db;
+            font-weight: 500;
+            min-width: 60px;
+        }
+
+        .boss-key-input {
+            flex: 1;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(0, 180, 220, 0.3);
+            border-radius: 6px;
+            color: #00c8e6;
+            font-size: 14px;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            outline: none;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .boss-key-input:focus {
+            border-color: #00c8e6;
+            box-shadow: 0 0 15px rgba(0, 200, 230, 0.3);
+        }
+
+        .boss-key-input::placeholder {
+            color: #4a5568;
+        }
+
+        .boss-key-input.recording {
+            border-color: #ff6b6b;
+            box-shadow: 0 0 20px rgba(255, 107, 107, 0.4);
+            animation: pulse-border 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse-border {
+            0%, 100% {
+                border-color: #ff6b6b;
+                box-shadow: 0 0 15px rgba(255, 107, 107, 0.3);
+            }
+            50% {
+                border-color: #ff8c8c;
+                box-shadow: 0 0 25px rgba(255, 107, 107, 0.6);
+            }
+        }
+
+        .boss-key-input.recording::placeholder {
+            color: #ff6b6b;
+        }
+
+        .boss-key-input.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            border-color: rgba(107, 114, 128, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -1150,6 +1359,9 @@
                 <span class="title-text" id="captionLabel">游戏冻结工具 (v1.4)</span>
             </div>
             <div class="title-right">
+                <button class="window-btn btn-settings" onclick="showSettings()">
+                    <span class="icon-settings"></span>
+                </button>
                 <button class="window-btn btn-minimize" onclick="sendWebViewCmd_SysMinimize()">
                     <span class="icon-minus"></span>
                 </button>
@@ -1243,6 +1455,61 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增设置弹窗 -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-window">
+            <div class="modal-title-bar">
+                <span class="modal-title-text">设置</span>
+                <button class="modal-close-btn" onclick="closeSettingsModal()">
+                    <span class="icon-x"></span>
+                </button>
+            </div>
+            <div class="modal-content">
+                <div class="modal-form">
+                    <div class="options-section" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div class="option-item" onclick="toggleSetting('singleInstance')">
+                            <div class="checkbox-wrapper checked" id="singleInstanceCheckbox">
+                                <span class="checkbox-icon icon-check"></span>
+                            </div>
+                            <span class="option-label">禁止重复启动</span>
+                        </div>
+                        <div class="option-item" onclick="toggleSetting('minimizeToTray')">
+                            <div class="checkbox-wrapper checked" id="minimizeToTrayCheckbox">
+                                <span class="checkbox-icon icon-check"></span>
+                            </div>
+                            <span class="option-label">关闭时隐藏到托盘</span>
+                        </div>
+                        <div class="option-item" onclick="toggleSetting('autoStart')">
+                            <div class="checkbox-wrapper unchecked" id="autoStartCheckbox">
+                                <span class="checkbox-icon icon-check"></span>
+                            </div>
+                            <span class="option-label">开机自动启动</span>
+                        </div>
+                        <div class="option-item" onclick="toggleSetting('bossKeyEnabled')">
+                            <div class="checkbox-wrapper unchecked" id="bossKeyEnabledCheckbox">
+                                <span class="checkbox-icon icon-check"></span>
+                            </div>
+                            <span class="option-label">启用老板键</span>
+                        </div>
+                    </div>
+                    <div class="boss-key-container">
+                        <label class="boss-key-label">老板键</label>
+                        <input type="text" 
+                               class="boss-key-input" 
+                               id="bossKeyInput" 
+                               placeholder="点击后按下组合键" 
+                               readonly 
+                               onclick="startRecordingBossKey()">
+                    </div>
+                    <div class="modal-btn-group">
+                        <button class="modal-btn confirm" onclick="saveSettings()">保存</button>
+                        <button class="modal-btn cancel" onclick="closeSettingsModal()">取消</button>
                     </div>
                 </div>
             </div>
@@ -1474,6 +1741,10 @@
             event.currentTarget.classList.add('active');
             // 更新当前选中的卡片
             activeGameCard = event.currentTarget;
+            // 获取被点击的按钮序号
+            const buttonIndex = getActiveGameNumber() - 1;;
+            // 发送选中的按钮序号到C++
+            sendWebViewCmd_SelShortCutButton(buttonIndex);
         }
 
         function setGameFrozen(buttonIndex, isFrozen) {
@@ -1498,11 +1769,13 @@
                 console.log('该游戏已经在冻结状态，无需重复冻结');
                 return;
             }
-            sendWebViewCmd_FreezeGame(getActiveGameNumber() - 1);
+            const buttonIndex = getActiveGameNumber() - 1;
+            sendWebViewCmd_FreezeGame(buttonIndex);
         }
 
         function thawGame() {
-            sendWebViewCmd_ThawGame(getActiveGameNumber() - 1);
+            const buttonIndex = getActiveGameNumber() - 1;
+            sendWebViewCmd_ThawGame(buttonIndex);
         }
 
         function toggleOption(optionName) {
@@ -1514,9 +1787,65 @@
             const isEnabled = checkbox.classList.contains('checked');
             console.log(`${optionName} enabled: ${isEnabled}`);
 
-            sendWebViewCmd_ToggleOption(optionName);
+            AppConfig[optionName] = isEnabled;
+            sendWebViewCmd_SetConfigInfo();
+
         }
 
+        // 显示设置面板
+        function showSettings() {
+            const settingsModal = document.getElementById('settingsModal');
+            settingsModal.classList.add('active');
+            // 打开设置窗口时更新UI
+            updateSettingsUI();
+        }
+
+        // 关闭设置弹窗
+        function closeSettingsModal() {
+            const settingsModal = document.getElementById('settingsModal');
+            settingsModal.classList.remove('active');
+        }
+
+        // 切换设置选项
+        function toggleSetting(settingName) {
+            const checkbox = document.getElementById(`${settingName}Checkbox`);
+            if (checkbox) {
+                // 切换选中状态
+                checkbox.classList.toggle('checked');
+                checkbox.classList.toggle('unchecked');
+                
+                // 更新 AppConfig
+                const isChecked = checkbox.classList.contains('checked');
+                AppConfig[settingName] = isChecked;
+                
+                // 如果是切换老板键启用状态，同时更新老板键输入框
+                if (settingName === 'bossKeyEnabled') {
+                    const bossKeyInput = document.getElementById('bossKeyInput');
+                    if (bossKeyInput) {
+                        if (isChecked) {
+                            bossKeyInput.classList.remove('disabled');
+                        } else {
+                            bossKeyInput.classList.add('disabled');
+                        }
+                    }
+                }
+            }
+        }
+
+        // 保存设置
+        function saveSettings() {
+            // AppConfig 在 toggleSetting 中已经更新，这里只需要发送配置信息到后端
+            sendWebViewCmd_SetConfigInfo();
+            
+            closeSettingsModal();
+        }
+
+        // 点击设置弹窗遮罩层关闭
+        document.getElementById('settingsModal').addEventListener('click', function (e) {
+            if (e.target === document.getElementById('settingsModal')) {
+                closeSettingsModal();
+            }
+        });
 
         // 新增弹窗相关函数
         function editShortcuts() {
@@ -1710,6 +2039,101 @@
             initializeGameIcons();
             initializeTitleIcon();
         });
+
+        // 老板键相关变量
+        let isRecordingBossKey = false;
+
+        // 开始录制老板键
+        function startRecordingBossKey() {
+            // 检查是否启用了老板键
+            if (!AppConfig.bossKeyEnabled) {
+                return;
+            }
+            
+            const input = document.getElementById("bossKeyInput");
+            isRecordingBossKey = true;
+            input.classList.add("recording");
+            input.placeholder = "请按下组合键...";
+            input.value = "";
+            document.addEventListener("keydown", handleBossKeyPress);
+        }
+
+        // 停止录制老板键
+        function stopRecordingBossKey() {
+            const input = document.getElementById("bossKeyInput");
+            isRecordingBossKey = false;
+            input.classList.remove("recording");
+            input.placeholder = "点击后按下组合键";
+            document.removeEventListener("keydown", handleBossKeyPress);
+        }
+
+        // 处理按键事件
+        function handleBossKeyPress(e) {
+            if (!isRecordingBossKey) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            const modifiers = [];
+            if (e.ctrlKey) modifiers.push("Ctrl");
+            if (e.altKey) modifiers.push("Alt");
+            if (e.shiftKey) modifiers.push("Shift");
+            if (e.metaKey) modifiers.push("Win");
+
+            let keyName = "";
+
+            // 功能键映射
+            const functionKeyMap = {
+                "F1": "F1", "F2": "F2", "F3": "F3", "F4": "F4",
+                "F5": "F5", "F6": "F6", "F7": "F7", "F8": "F8",
+                "F9": "F9", "F10": "F10", "F11": "F11", "F12": "F12",
+                "Space": "Space", "Tab": "Tab", "Enter": "Enter",
+                "Escape": "Esc", "Backspace": "Backspace",
+                "Delete": "Delete", "Insert": "Insert",
+                "Home": "Home", "End": "End", "PageUp": "PageUp", "PageDown": "PageDown",
+                "ArrowUp": "Up", "ArrowDown": "Down", "ArrowLeft": "Left", "ArrowRight": "Right"
+            };
+
+            // 检查是否是功能键
+            if (functionKeyMap[e.key]) {
+                keyName = functionKeyMap[e.key];
+            }
+            // 检查是否是特殊键（仅有修饰键时）
+            else if (e.key === "Control" || e.key === "Alt" || e.key === "Shift" || e.key === "Meta") {
+                // 忽略单独的修饰键
+                return;
+            }
+            // 其他键
+            else {
+                // 处理特殊字符键
+                if (e.key.length === 1) {
+                    if (e.shiftKey) {
+                        // .shiftKey为true时，e.key是大写字母或特殊字符
+                        keyName = e.key.toUpperCase();
+                    } else {
+                        // 非shift状态显示小写
+                        keyName = e.key.toLowerCase();
+                    }
+                } else {
+                    keyName = e.key;
+                }
+            }
+
+            // 组合键字符串
+            const comboKey = [...modifiers, keyName].join("+");
+
+            // 更新输入框显示
+            const input = document.getElementById("bossKeyInput");
+            input.value = comboKey;
+
+            // 保存到配置
+            AppConfig.bossKey = comboKey;
+
+            // 停止录制
+            stopRecordingBossKey();
+
+            console.log("老板键已设置为:", comboKey);
+        }
 
         // 点击弹窗外部关闭
         editModal.addEventListener('click', function (e) {

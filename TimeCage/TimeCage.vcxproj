@@ -188,6 +188,7 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="BossKeyManager.h" />
     <ClInclude Include="ConfigManager.h" />
     <ClInclude Include="define.h" />
     <ClInclude Include="framework.h" />
@@ -200,6 +201,7 @@
     <ClInclude Include="WebView2Manager.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="BossKeyManager.cpp" />
     <ClCompile Include="CConfigManager.cpp" />
     <ClCompile Include="MyProcessHelper.cpp" />
     <ClCompile Include="pch.cpp">
